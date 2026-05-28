@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
 import { LEAGUES, getLeagueByScore, getLeagueProgress, ACHIEVEMENTS } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
-import { Trophy, Home, RotateCcw, Share2, Swords } from 'lucide-react';
+import { Trophy, Home, RotateCcw, Share2, Swords, Skull } from 'lucide-react';
 import { playWin, playCoin } from '@/lib/sounds';
 import { useEffect, useState, useCallback } from 'react';
 
@@ -19,6 +19,8 @@ export default function ResultScreen() {
     level,
     newAchievements,
     duelMode,
+    gameMode,
+    survivalRecord,
     playAgain,
     setPhase,
     finishDuelCreator,
@@ -31,8 +33,8 @@ export default function ResultScreen() {
   const totalQuestions = questions.length;
   const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
   const isPerfect = correctCount === totalQuestions && totalQuestions > 0;
+  const isSurvival = gameMode === 'survival';
 
-  // Play win sound when score is good (>70%)
   useEffect(() => {
     if (accuracy >= 70) {
       playWin();
@@ -42,27 +44,29 @@ export default function ResultScreen() {
     }
   }, []);
 
-  // For duel mode: handle game end differently
   const [duelShareLink, setDuelShareLink] = useState<string | null>(null);
 
   const handleDuelFinish = useCallback(() => {
     if (duelMode && !useQuizStore.getState().duelData) {
-      // Creator mode - generate share link
       const link = finishDuelCreator();
       setDuelShareLink(link);
     } else if (duelMode && useQuizStore.getState().duelData) {
-      // Challenger mode - show comparison
       finishDuelChallenger();
     }
   }, [duelMode, finishDuelCreator, finishDuelChallenger]);
 
-  // Score & coins calculation (mirroring endGame logic for display)
   const avgTime = answers.length > 0 ? answers.reduce((s, a) => s + a.timeSpent, 0) / answers.length : 0;
   let roundScore = correctCount * 10;
   if (avgTime < 5) roundScore += 5;
   if (bestStreak >= 5) roundScore += 10;
   if (bestStreak >= 10) roundScore += 20;
   if (isPerfect) roundScore += 25;
+
+  if (isSurvival) {
+    const multiplier = 1 + Math.floor(correctCount / 5) * 0.5;
+    roundScore = Math.round(roundScore * Math.min(multiplier, 3));
+  }
+
   const coinsEarned = Math.ceil(roundScore / 2);
 
   const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
@@ -71,7 +75,9 @@ export default function ResultScreen() {
 
   const newXPAchievements = newAchievements.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
 
-  const shareText = `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
+  const shareText = isSurvival
+    ? `🧠 КВИЗЛИК — Выживание\n\nЯ продержался ${correctCount} вопросов!\n💀 Рекорд: ${survivalRecord}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`
+    : `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
 
   const handleShare = () => {
     haptic('light');
@@ -91,7 +97,7 @@ export default function ResultScreen() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-6 flex flex-col">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-6 flex flex-col">
       {/* Trophy Animation */}
       <motion.div
         initial={{ opacity: 0, scale: 0.3, rotate: -20 }}
@@ -100,11 +106,16 @@ export default function ResultScreen() {
         className="text-center mb-6"
       >
         <div className="text-6xl mb-2">
-          {isPerfect ? '🏆' : correctCount > totalQuestions / 2 ? '⭐' : '💪'}
+          {isSurvival ? '💀' : isPerfect ? '🏆' : correctCount > totalQuestions / 2 ? '⭐' : '💪'}
         </div>
         <h2 className="text-white text-2xl font-black">
-          {isPerfect ? 'Перфект!' : correctCount > totalQuestions / 2 ? 'Отлично!' : 'Не сдавайся!'}
+          {isSurvival ? `Выживание: ${correctCount}` : isPerfect ? 'Перфект!' : correctCount > totalQuestions / 2 ? 'Отлично!' : 'Не сдавайся!'}
         </h2>
+        {isSurvival && (
+          <p className="text-red-400/70 text-sm mt-1">
+            Рекорд: {survivalRecord} правильных
+          </p>
+        )}
       </motion.div>
 
       {/* Score Breakdown */}
@@ -112,7 +123,7 @@ export default function ResultScreen() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-[#1a1235] border border-white/10 rounded-2xl p-5 mb-4"
+        className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-5 mb-4"
       >
         <div className="grid grid-cols-3 gap-4 text-center mb-4">
           <div>
@@ -132,6 +143,14 @@ export default function ResultScreen() {
           </div>
         </div>
 
+        {isSurvival && correctCount >= 5 && (
+          <div className="text-center mb-3">
+            <span className="bg-red-500/20 text-red-300 text-[10px] font-bold px-2 py-1 rounded-full">
+              Множитель x{Math.min(1 + Math.floor(correctCount / 5) * 0.5, 3).toFixed(1)}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between py-2 border-t border-white/10">
           <span className="text-white/50 text-sm">Точность</span>
           <span className="text-white font-bold text-sm">{accuracy}%</span>
@@ -147,7 +166,7 @@ export default function ResultScreen() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-4"
+        className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4"
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -213,15 +232,14 @@ export default function ResultScreen() {
               transition={{ delay: 0.55 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <Home className="w-4 h-4" /> На главную
             </motion.button>
           </>
         ) : duelShareLink ? (
           <>
-            {/* Duel share link display */}
-            <div className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-2">
+            <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-2">
               <p className="text-white/40 text-[10px] mb-2 uppercase tracking-wider">Ссылка для дуэли</p>
               <p className="text-white/80 text-xs break-all leading-relaxed font-mono">
                 {duelShareLink}
@@ -255,7 +273,7 @@ export default function ResultScreen() {
               animate={{ opacity: 1, y: 0 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <Home className="w-4 h-4" /> На главную
             </motion.button>
@@ -279,7 +297,7 @@ export default function ResultScreen() {
               transition={{ delay: 0.55 }}
               whileTap={{ scale: 0.97 }}
               onClick={handleShare}
-              className="w-full bg-[#1a1235] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <Share2 className="w-4 h-4" /> Поделиться
             </motion.button>
@@ -290,7 +308,7 @@ export default function ResultScreen() {
               transition={{ delay: 0.6 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <Home className="w-4 h-4" /> На главную
             </motion.button>

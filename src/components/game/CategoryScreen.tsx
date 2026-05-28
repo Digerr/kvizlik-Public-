@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
 import { CATEGORIES, getQuestionsForCategory, getMixedQuestions, getQuestionsByDifficulty, type Question } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Skull } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 const DIFFICULTY_OPTIONS = [
@@ -40,7 +40,7 @@ export default function CategoryScreen() {
     return data.questions;
   };
 
-  const handleCategorySelect = async (categoryId: string | null) => {
+  const handleCategorySelect = async (categoryId: string | null, mode: "normal" | "survival" = "normal") => {
     haptic('light');
     setError(null);
 
@@ -48,18 +48,17 @@ export default function CategoryScreen() {
       setIsLoading(true);
       try {
         const aiQuestions = await fetchAiQuestions(categoryId, difficulty, 10);
-        startGame(categoryId, aiQuestions, true);
+        startGame(categoryId, aiQuestions, true, mode);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Ошибка при генерации вопросов');
-        // Fallback to local questions
         const questions = getQuestionsByDifficulty(categoryId, difficulty, 10, seenQuestions);
         if (questions.length === 0) {
           const fallback = categoryId
             ? getQuestionsForCategory(categoryId, 10, seenQuestions)
             : getMixedQuestions(10, seenQuestions);
-          startGame(categoryId, fallback, false);
+          startGame(categoryId, fallback, false, mode);
         } else {
-          startGame(categoryId, questions, false);
+          startGame(categoryId, questions, false, mode);
         }
       } finally {
         setIsLoading(false);
@@ -70,22 +69,23 @@ export default function CategoryScreen() {
         const fallback = categoryId
           ? getQuestionsForCategory(categoryId, 10, seenQuestions)
           : getMixedQuestions(10, seenQuestions);
-        startGame(categoryId, fallback, false);
+        startGame(categoryId, fallback, false, mode);
       } else {
-        startGame(categoryId, questions, false);
+        startGame(categoryId, questions, false, mode);
       }
     }
   };
 
   const handleMixed = () => handleCategorySelect(null);
+  const handleSurvival = () => handleCategorySelect(null, 'survival');
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-4 flex flex-col">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <button
           onClick={() => { haptic('light'); setPhase('home'); }}
-          className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
+          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
         >
           <ArrowLeft className="w-4 h-4 text-white/70" />
         </button>
@@ -101,7 +101,7 @@ export default function CategoryScreen() {
             className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] ${
               difficulty === opt.value
                 ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-600/20'
-                : 'bg-[#1a1235] border border-white/10 text-white/60 hover:bg-[#221a45]'
+                : 'bg-[var(--theme-card)] border border-white/10 text-white/60 hover:bg-[var(--theme-card-hover)]'
             }`}
           >
             {opt.emoji} {opt.label}
@@ -155,7 +155,7 @@ export default function CategoryScreen() {
         whileTap={{ scale: 0.97 }}
         onClick={handleMixed}
         disabled={isLoading}
-        className="w-full bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30 rounded-2xl p-4 mb-4 flex items-center gap-3 hover:from-purple-600/40 hover:to-blue-600/40 active:scale-[0.98] transition-all disabled:opacity-50"
+        className="w-full bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30 rounded-2xl p-4 mb-3 flex items-center gap-3 hover:from-purple-600/40 hover:to-blue-600/40 active:scale-[0.98] transition-all disabled:opacity-50"
       >
         <span className="text-3xl">🎲</span>
         <div className="text-left">
@@ -164,8 +164,26 @@ export default function CategoryScreen() {
         </div>
       </motion.button>
 
+      {/* Survival Mode */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={handleSurvival}
+        disabled={isLoading}
+        className="w-full bg-gradient-to-r from-red-600/30 to-orange-600/30 border border-red-500/30 rounded-2xl p-4 mb-4 flex items-center gap-3 hover:from-red-600/40 hover:to-orange-600/40 active:scale-[0.98] transition-all disabled:opacity-50"
+      >
+        <span className="text-3xl">💀</span>
+        <div className="text-left">
+          <p className="text-white font-bold">Выживание</p>
+          <p className="text-white/50 text-xs">Одна ошибка = конец! Сложность растёт</p>
+        </div>
+        <Skull className="w-5 h-5 text-red-400 ml-auto" />
+      </motion.button>
+
       {/* Category Grid */}
-      <div className="grid grid-cols-2 gap-3 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 340px)' }}>
+      <div className="grid grid-cols-2 gap-3 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 420px)' }}>
         {CATEGORIES.map((cat, i) => (
           <motion.button
             key={cat.id}
@@ -175,7 +193,7 @@ export default function CategoryScreen() {
             whileTap={{ scale: 0.97 }}
             onClick={() => handleCategorySelect(cat.id)}
             disabled={isLoading}
-            className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 flex flex-col items-start gap-2 hover:bg-[#221a45] active:scale-[0.98] transition-all text-left disabled:opacity-50"
+            className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 flex flex-col items-start gap-2 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all text-left disabled:opacity-50"
           >
             <span className="text-2xl">{cat.emoji}</span>
             <p className="text-white font-semibold text-sm leading-tight">{cat.name}</p>
@@ -189,9 +207,9 @@ export default function CategoryScreen() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-[#0f0a1e]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
+          className="fixed inset-0 bg-[var(--theme-bg)]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
         >
-          <div className="bg-[#1a1235] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
+          <div className="bg-[var(--theme-card)] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
             <div className="relative">
               <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
               <span className="absolute inset-0 flex items-center justify-center text-xl">🤖</span>

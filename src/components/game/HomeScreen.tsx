@@ -2,10 +2,10 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { AVATARS, LEAGUES, ACHIEVEMENTS } from '@/lib/quiz-data';
+import { AVATARS, LEAGUES, ACHIEVEMENTS, THEMES } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
 import { useEffect, useState } from 'react';
-import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight, Volume2, VolumeX, Swords } from 'lucide-react';
+import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight, Volume2, VolumeX, Swords, Palette, Crown } from 'lucide-react';
 import { isMuted, toggleMute } from '@/lib/sounds';
 
 export default function HomeScreen() {
@@ -20,6 +20,7 @@ export default function HomeScreen() {
     powerUps,
     dailyTasks,
     newAchievements,
+    currentTheme,
     setPhase,
     refreshDailyTasks,
   } = useQuizStore();
@@ -27,6 +28,8 @@ export default function HomeScreen() {
   const { haptic, user } = useTelegram();
   const [showAchievement, setShowAchievement] = useState<string | null>(null);
   const [muted, setMuted] = useState(isMuted());
+
+  const activeTheme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
 
   useEffect(() => {
     refreshDailyTasks();
@@ -55,7 +58,7 @@ export default function HomeScreen() {
   const totalPowerUps = powerUps.freeze + powerUps.fiftyFifty + powerUps.hint;
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-6 flex flex-col">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-6 flex flex-col">
       {/* Achievement Popup */}
       <AnimatePresence>
         {showAchievement && (() => {
@@ -88,7 +91,12 @@ export default function HomeScreen() {
           className="text-center flex-1"
         >
           <h1 className="text-4xl font-black tracking-tight">
-            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+            <span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: `linear-gradient(to right, ${activeTheme.colors.accentFrom}, ${activeTheme.colors.accentTo})`,
+              }}
+            >
               КВИЗЛИК
             </span>
             <span className="ml-2">🧠</span>
@@ -102,7 +110,7 @@ export default function HomeScreen() {
               setMuted(nowMuted);
               haptic('light');
             }}
-            className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
+            className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
             title={muted ? 'Включить звук' : 'Выключить звук'}
           >
             {muted
@@ -118,10 +126,12 @@ export default function HomeScreen() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.1 }}
-        className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-4"
+        className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4"
       >
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-[#251d45] flex items-center justify-center text-2xl border border-white/10">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl border border-white/10"
+            style={{ backgroundColor: activeTheme.colors.cardHover }}
+          >
             {avatar.emoji}
           </div>
           <div className="flex-1 min-w-0">
@@ -160,7 +170,11 @@ export default function HomeScreen() {
             haptic('light');
             setPhase('category');
           }}
-          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform"
+          className="flex-1 text-white font-bold text-lg py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-transform"
+          style={{
+            backgroundImage: `linear-gradient(to right, ${activeTheme.colors.accentFrom}, ${activeTheme.colors.accentTo})`,
+            boxShadow: `0 4px 20px ${activeTheme.colors.accentFrom}40`,
+          }}
         >
           🎮 Играть
         </motion.button>
@@ -189,7 +203,7 @@ export default function HomeScreen() {
       >
         <button
           onClick={() => { haptic('light'); setPhase('daily'); }}
-          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
           <div className="w-9 h-9 rounded-xl bg-orange-500/20 flex items-center justify-center text-lg">📋</div>
           <div className="text-left flex-1 min-w-0">
@@ -202,7 +216,7 @@ export default function HomeScreen() {
 
         <button
           onClick={() => { haptic('light'); setPhase('achievements'); }}
-          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
           <div className="w-9 h-9 rounded-xl bg-yellow-500/20 flex items-center justify-center text-lg">🏆</div>
           <div className="text-left flex-1 min-w-0">
@@ -213,7 +227,7 @@ export default function HomeScreen() {
 
         <button
           onClick={() => { haptic('light'); setPhase('shop'); }}
-          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
           <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center text-lg">🛒</div>
           <div className="text-left flex-1 min-w-0">
@@ -224,12 +238,46 @@ export default function HomeScreen() {
 
         <button
           onClick={() => { haptic('light'); setPhase('leaderboard'); }}
-          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
           <div className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center text-lg">📊</div>
           <div className="text-left flex-1 min-w-0">
             <p className="text-white text-sm font-medium">Рейтинг</p>
             <p className="text-white/40 text-[10px]">Топ игроков</p>
+          </div>
+        </button>
+      </motion.div>
+
+      {/* Second row: Themes + Tournament */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.32 }}
+        className="grid grid-cols-2 gap-3 mb-4"
+      >
+        <button
+          onClick={() => { haptic('light'); setPhase('themes'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-pink-500/20 flex items-center justify-center text-lg">
+            <Palette className="w-4 h-4 text-pink-400" />
+          </div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Темы</p>
+            <p className="text-white/40 text-[10px]">{activeTheme.emoji} {activeTheme.name}</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('tournament'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center text-lg">
+            <Crown className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Турнир</p>
+            <p className="text-white/40 text-[10px]">Еженедельный</p>
           </div>
         </button>
       </motion.div>
@@ -240,7 +288,7 @@ export default function HomeScreen() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.35 }}
         onClick={() => { haptic('light'); setPhase('profile'); }}
-        className="w-full bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:bg-[#221a45] active:scale-[0.98] transition-all mb-4"
+        className="w-full bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all mb-4"
       >
         <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center text-lg">👤</div>
         <span className="text-white text-sm font-medium">Профиль</span>
@@ -269,7 +317,7 @@ export default function HomeScreen() {
 
       {/* Footer */}
       <div className="mt-auto pt-6 text-center">
-        <p className="text-white/20 text-[10px]">КВИЗЛИК v2.0 • made by @SergoDev</p>
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v3.0 • made by @SergoDev</p>
       </div>
     </div>
   );

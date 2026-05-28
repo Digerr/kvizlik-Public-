@@ -9,6 +9,10 @@ import {
   ACHIEVEMENTS,
   AVATARS,
   DAILY_TASKS_TEMPLATE,
+  THEMES,
+  CHEST_TYPES,
+  SURVIVAL_MILESTONES,
+  DAILY_CHAIN,
 } from "./quiz-data";
 import {
   loadProfile,
@@ -29,12 +33,16 @@ export type QuizPhase =
   | "shop"
   | "daily"
   | "duel"
-  | "duel_result";
+  | "duel_result"
+  | "themes"
+  | "chest"
+  | "tournament";
 
 export interface DuelData {
   questions: string[];
   creatorScore: number;
   creatorName: string;
+  creatorReactions: string[];
 }
 
 export interface DuelResult {
@@ -82,6 +90,14 @@ export interface LeaderboardEntry {
   league: string;
   isPlayer?: boolean;
   telegramId?: number;
+}
+
+export interface ChestReward {
+  type: "common" | "silver" | "gold";
+  rewards: {
+    coins: number;
+    avatarId?: string;
+  };
 }
 
 export interface QuizState {
@@ -145,6 +161,7 @@ export interface QuizState {
   duelMode: boolean;
   duelData: DuelData | null;
   duelResult: DuelResult | null;
+  creatorReactions: string[];
 
   // Cloud sync
   isCloudLoaded: boolean;
@@ -154,13 +171,49 @@ export interface QuizState {
   // Leaderboard (real from cloud)
   leaderboard: LeaderboardEntry[];
 
+  // ===== NEW FEATURES =====
+
+  // Themes
+  currentTheme: string;
+  unlockedThemes: string[];
+
+  // Duels tracking
+  duelsWon: number;
+  duelsPlayed: number;
+
+  // Chests
+  pendingChest: ChestReward | null;
+  gamesPlayedToday: number;
+  gamesPlayedTodayDate: string | null;
+
+  // Survival mode
+  gameMode: "normal" | "survival";
+  survivalRecord: number;
+
+  // Daily chain (7-day)
+  dailyChainDay: number;
+  dailyChainCompleted: boolean[];
+  dailyChainDate: string | null;
+
+  // Season/League
+  seasonScore: number;
+  seasonStart: string | null;
+
+  // Profile statistics
+  categoryStats: Record<string, { played: number; correct: number }>;
+  gamesByDay: Record<string, number>;
+
+  // Tournament
+  tournamentData: TournamentEntry[];
+  tournamentWeekKey: string | null;
+
   // Actions
   setPhase: (phase: QuizPhase) => void;
   setPlayerName: (name: string) => void;
   setTelegramId: (id: string | null) => void;
   setAvatar: (avatarId: string) => void;
   setDifficulty: (d: 1 | 2 | 3) => void;
-  startGame: (categoryId: string | null, questions: Question[], aiMode?: boolean) => void;
+  startGame: (categoryId: string | null, questions: Question[], aiMode?: boolean, gameMode?: "normal" | "survival") => void;
   selectOption: (optionIndex: number) => void;
   revealAnswer: () => void;
   nextQuestion: () => void;
@@ -196,8 +249,35 @@ export interface QuizState {
   joinDuel: (duelData: DuelData, questions: Question[]) => void;
   finishDuelCreator: () => string;
   finishDuelChallenger: () => void;
+  addCreatorReaction: (emoji: string) => void;
+
+  // Theme actions
+  setTheme: (themeId: string) => void;
+  unlockTheme: (themeId: string) => void;
+  checkThemeUnlocks: () => void;
+
+  // Chest actions
+  openChest: () => void;
+
+  // Daily chain actions
+  checkDailyChain: () => void;
+  claimDailyChain: (day: number) => void;
+
+  // Season actions
+  checkSeason: () => void;
+
+  // Tournament
+  fetchTournament: () => Promise<void>;
 
   resetAll: () => void;
+}
+
+export interface TournamentEntry {
+  rank: number;
+  name: string;
+  avatarId: string;
+  score: number;
+  isPlayer?: boolean;
 }
 
 function generateDailyTasks(): DailyTaskProgress[] {
@@ -225,6 +305,30 @@ function calcLevel(xp: number): number {
 
 function calcXpForLevel(level: number): number {
   return (level - 1) * (level - 1) * 50;
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getWeekKey(): string {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const diff = now.getTime() - start.getTime();
+  const oneDay = 86400000;
+  const dayOfYear = Math.floor(diff / oneDay);
+  const weekNum = Math.ceil((dayOfYear + start.getDay() + 1) / 7);
+  return `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function getBiweeklySeason(): number {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const diff = now.getTime() - start.getTime();
+  const oneDay = 86400000;
+  const dayOfYear = Math.floor(diff / oneDay);
+  const weekNum = Math.ceil((dayOfYear + start.getDay() + 1) / 7);
+  return Math.ceil(weekNum / 2);
 }
 
 const INITIAL_STATE = {
@@ -272,10 +376,30 @@ const INITIAL_STATE = {
   duelMode: false,
   duelData: null as DuelData | null,
   duelResult: null as DuelResult | null,
+  creatorReactions: [] as string[],
   isCloudLoaded: false,
   isCloudSyncing: false,
   lastCloudSync: 0,
   leaderboard: [] as LeaderboardEntry[],
+  // New features
+  currentTheme: "neon",
+  unlockedThemes: ["neon"] as string[],
+  duelsWon: 0,
+  duelsPlayed: 0,
+  pendingChest: null as ChestReward | null,
+  gamesPlayedToday: 0,
+  gamesPlayedTodayDate: null as string | null,
+  gameMode: "normal" as "normal" | "survival",
+  survivalRecord: 0,
+  dailyChainDay: 0,
+  dailyChainCompleted: [false, false, false, false, false, false, false] as boolean[],
+  dailyChainDate: null as string | null,
+  seasonScore: 0,
+  seasonStart: null as string | null,
+  categoryStats: {} as Record<string, { played: number; correct: number }>,
+  gamesByDay: {} as Record<string, number>,
+  tournamentData: [] as TournamentEntry[],
+  tournamentWeekKey: null as string | null,
 };
 
 export const useQuizStore = create<QuizState>()(
@@ -301,7 +425,6 @@ export const useQuizStore = create<QuizState>()(
         try {
           const profile = await loadProfile(Number(tid));
           if (profile) {
-            // Cloud data is source of truth — merge with local (take the higher values)
             const localState = {
               totalScore: state.totalScore,
               totalXP: state.totalXP,
@@ -314,7 +437,6 @@ export const useQuizStore = create<QuizState>()(
               dailyStreak: state.dailyStreak,
             };
 
-            // Take the max between local and cloud (local might have newer data if cloud failed before)
             const merged = {
               playerName: profile.player_name || state.playerName,
               avatarId: profile.avatar_id || state.avatarId,
@@ -334,6 +456,15 @@ export const useQuizStore = create<QuizState>()(
               powerUps: profile.power_ups || state.powerUps,
               seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
               categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
+              // New fields from cloud
+              currentTheme: (profile as any).current_theme || state.currentTheme,
+              unlockedThemes: (profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+              duelsWon: Math.max((profile as any).duels_won || 0, state.duelsWon),
+              duelsPlayed: Math.max((profile as any).duels_played || 0, state.duelsPlayed),
+              survivalRecord: Math.max((profile as any).survival_record || 0, state.survivalRecord),
+              seasonScore: Math.max((profile as any).season_score || 0, state.seasonScore),
+              categoryStats: (profile as any).category_stats || state.categoryStats,
+              gamesByDay: (profile as any).games_by_day || state.gamesByDay,
             };
 
             set({
@@ -342,7 +473,6 @@ export const useQuizStore = create<QuizState>()(
               isCloudSyncing: false,
             });
           } else {
-            // No cloud profile yet — this is first time, upload local data
             set({ isCloudLoaded: true, isCloudSyncing: false });
             await get().syncToCloud();
           }
@@ -357,7 +487,6 @@ export const useQuizStore = create<QuizState>()(
         const tid = state.telegramId;
         if (!tid) return;
 
-        // Don't sync too often (at least 2 seconds between syncs)
         const now = Date.now();
         if (now - state.lastCloudSync < 2000) return;
 
@@ -382,9 +511,16 @@ export const useQuizStore = create<QuizState>()(
             power_ups: state.powerUps,
             seen_questions: state.seenQuestions,
             categories_played: state.categoriesPlayed,
-          });
+            current_theme: state.currentTheme,
+            unlocked_themes: state.unlockedThemes,
+            duels_won: state.duelsWon,
+            duels_played: state.duelsPlayed,
+            survival_record: state.survivalRecord,
+            season_score: state.seasonScore,
+            category_stats: state.categoryStats as any,
+            games_by_day: state.gamesByDay as any,
+          } as any);
 
-          // Also update leaderboard
           await updateLeaderboard(
             Number(tid),
             state.playerName || 'Игрок',
@@ -416,7 +552,7 @@ export const useQuizStore = create<QuizState>()(
 
       // ===== GAME ACTIONS =====
 
-      startGame: (categoryId, questions, aiMode = false) => {
+      startGame: (categoryId, questions, aiMode = false, gameMode = "normal") => {
         set({
           phase: "game",
           categoryId,
@@ -435,6 +571,8 @@ export const useQuizStore = create<QuizState>()(
           activePowerUp: null,
           aiMode,
           isGeneratingQuestions: false,
+          gameMode,
+          creatorReactions: [],
         });
       },
 
@@ -471,6 +609,15 @@ export const useQuizStore = create<QuizState>()(
           if (timeSpent < 3) xpGain += 5;
         }
 
+        // Update category stats
+        const cat = question.category;
+        const newCategoryStats = { ...state.categoryStats };
+        if (!newCategoryStats[cat]) newCategoryStats[cat] = { played: 0, correct: 0 };
+        newCategoryStats[cat] = {
+          played: newCategoryStats[cat].played + 1,
+          correct: newCategoryStats[cat].correct + (isCorrect ? 1 : 0),
+        };
+
         set({
           isRevealed: true,
           isTimerRunning: false,
@@ -485,7 +632,13 @@ export const useQuizStore = create<QuizState>()(
           totalXP: state.totalXP + xpGain,
           level: calcLevel(state.totalXP + xpGain),
           seenQuestions: newSeenQuestions,
+          categoryStats: newCategoryStats,
         });
+
+        // In survival mode, wrong answer = immediate game over
+        if (state.gameMode === "survival" && !isCorrect) {
+          setTimeout(() => get().endGame(), 1000);
+        }
       },
 
       nextQuestion: () => {
@@ -493,7 +646,34 @@ export const useQuizStore = create<QuizState>()(
         const nextIndex = state.currentQuestionIndex + 1;
 
         if (nextIndex >= state.questions.length) {
-          get().endGame();
+          // In survival mode, we need more questions
+          if (state.gameMode === "survival") {
+            // Generate more questions for survival
+            const { getMixedQuestions } = require("./quiz-data");
+            const moreQs = getMixedQuestions(10, state.seenQuestions);
+            if (moreQs.length > 0) {
+              set({
+                questions: [...state.questions, ...moreQs],
+                currentQuestionIndex: nextIndex,
+                timerRemaining: 15,
+                selectedOption: null,
+                isRevealed: false,
+                isTimerRunning: true,
+                isFiftyFiftyActive: false,
+                fiftyFiftyRemoved: [],
+                isHintActive: false,
+                freezeTimeRemaining: 0,
+                activePowerUp: null,
+              });
+            } else {
+              get().endGame();
+            }
+          } else if (state.aiMode) {
+            // AI mode generates more
+            // The GameScreen will handle fetching
+          } else {
+            get().endGame();
+          }
         } else {
           set({
             currentQuestionIndex: nextIndex,
@@ -535,6 +715,10 @@ export const useQuizStore = create<QuizState>()(
               answers: [...state.answers, answer],
               currentStreak: 0,
             });
+            // In survival mode, timeout = game over
+            if (state.gameMode === "survival") {
+              setTimeout(() => get().endGame(), 1000);
+            }
           }
           return;
         }
@@ -559,9 +743,22 @@ export const useQuizStore = create<QuizState>()(
         if (avgTime < 5) roundScore += 5;
         if (state.bestStreak >= 5) roundScore += 10;
         if (state.bestStreak >= 10) roundScore += 20;
-        if (correctCount === totalQuestions) roundScore += 25;
+        if (correctCount === totalQuestions && totalQuestions > 0) roundScore += 25;
 
-        const coinsEarned = Math.ceil(roundScore / 2);
+        // Survival mode multiplier
+        if (state.gameMode === "survival") {
+          const multiplier = 1 + Math.floor(correctCount / 5) * 0.5;
+          roundScore = Math.round(roundScore * Math.min(multiplier, 3));
+
+          // Survival milestones
+          for (const milestone of SURVIVAL_MILESTONES) {
+            if (correctCount >= milestone.correct) {
+              roundScore += milestone.coins;
+            }
+          }
+        }
+
+        let coinsEarned = Math.ceil(roundScore / 2);
 
         const newTotalScore = state.totalScore + roundScore;
         const newLeague = getLeagueByScore(newTotalScore);
@@ -580,8 +777,57 @@ export const useQuizStore = create<QuizState>()(
             : 1;
         }
 
+        // Track games played today
+        const newGamesPlayedTodayDate = today;
+        const newGamesPlayedToday = state.gamesPlayedTodayDate === today
+          ? state.gamesPlayedToday + 1
+          : 1;
+
+        // Track games by day
+        const newGamesByDay = { ...state.gamesByDay };
+        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
+
+        // Survival record
+        const newSurvivalRecord = state.gameMode === "survival"
+          ? Math.max(state.survivalRecord, correctCount)
+          : state.survivalRecord;
+
+        // Season score
+        const newSeasonScore = state.seasonScore + roundScore;
+
+        // Determine chest
+        let pendingChest: ChestReward | null = null;
+
+        // Common chest after every game
+        const commonChest = CHEST_TYPES[0];
+        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
+        let chestAvatarId: string | undefined;
+        if (Math.random() < commonChest.avatarChance) {
+          const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
+          if (commonAvatars.length > 0) {
+            chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
+          }
+        }
+        pendingChest = { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } };
+
+        // Silver chest for 5 games in a day
+        if (newGamesPlayedToday >= 5 && newGamesPlayedToday % 5 === 0) {
+          const silverChest = CHEST_TYPES[1];
+          const silverCoins = randomInt(silverChest.coinRange[0], silverChest.coinRange[1]);
+          let silverAvatarId: string | undefined;
+          if (Math.random() < silverChest.avatarChance) {
+            const rareAvatars = AVATARS.filter(a => a.rarity === "rare" && !state.unlockedAvatars.includes(a.id));
+            if (rareAvatars.length > 0) {
+              silverAvatarId = rareAvatars[Math.floor(Math.random() * rareAvatars.length)].id;
+            }
+          }
+          // Replace with silver chest (better)
+          pendingChest = { type: "silver", rewards: { coins: silverCoins, avatarId: silverAvatarId } };
+        }
+
+        // Gold chest for duel win will be handled in finishDuelChallenger
+
         set({
-          phase: "result",
           totalScore: newTotalScore,
           gamesPlayed: state.gamesPlayed + 1,
           totalCorrect: state.totalCorrect + correctCount,
@@ -591,6 +837,13 @@ export const useQuizStore = create<QuizState>()(
           categoriesPlayed: newCategoriesPlayed,
           dailyStreak: newDailyStreak,
           lastDailyAt: today,
+          gamesPlayedToday: newGamesPlayedToday,
+          gamesPlayedTodayDate: newGamesPlayedTodayDate,
+          gamesByDay: newGamesByDay,
+          survivalRecord: newSurvivalRecord,
+          seasonScore: newSeasonScore,
+          pendingChest,
+          phase: "chest",
         });
 
         get().updateDailyProgress("games", 1);
@@ -599,8 +852,9 @@ export const useQuizStore = create<QuizState>()(
         if (state.categoryId) get().updateDailyProgress("category", 1);
 
         get().checkAchievements();
-
-        // Sync to cloud after game ends
+        get().checkThemeUnlocks();
+        get().checkDailyChain();
+        get().checkSeason();
         get().syncToCloud();
       },
 
@@ -626,6 +880,8 @@ export const useQuizStore = create<QuizState>()(
           duelMode: false,
           duelData: null,
           duelResult: null,
+          gameMode: "normal",
+          creatorReactions: [],
         });
       },
 
@@ -691,7 +947,6 @@ export const useQuizStore = create<QuizState>()(
             [key]: (state.powerUps[key] || 0) + 1,
           },
         });
-        // Sync to cloud after purchase
         get().syncToCloud();
         return true;
       },
@@ -707,7 +962,6 @@ export const useQuizStore = create<QuizState>()(
           unlockedAvatars: [...state.unlockedAvatars, id],
           avatarId: id,
         });
-        // Sync to cloud after purchase
         get().syncToCloud();
         return true;
       },
@@ -785,6 +1039,10 @@ export const useQuizStore = create<QuizState>()(
             case "level_5": earned = state.level >= 5; break;
             case "level_10": earned = state.level >= 10; break;
             case "hundred_correct": earned = state.totalCorrect >= 100; break;
+            case "survival_10": earned = state.survivalRecord >= 10; break;
+            case "survival_20": earned = state.survivalRecord >= 20; break;
+            case "survival_50": earned = state.survivalRecord >= 50; break;
+            case "duel_winner_10": earned = state.duelsWon >= 10; break;
           }
 
           if (earned) {
@@ -827,6 +1085,8 @@ export const useQuizStore = create<QuizState>()(
           isHintActive: false,
           freezeTimeRemaining: 0,
           activePowerUp: null,
+          gameMode: "normal",
+          creatorReactions: [],
         });
       },
 
@@ -849,7 +1109,14 @@ export const useQuizStore = create<QuizState>()(
           isHintActive: false,
           freezeTimeRemaining: 0,
           activePowerUp: null,
+          gameMode: "normal",
+          creatorReactions: [],
         });
+      },
+
+      addCreatorReaction: (emoji) => {
+        const state = get();
+        set({ creatorReactions: [...state.creatorReactions, emoji] });
       },
 
       finishDuelCreator: () => {
@@ -862,6 +1129,7 @@ export const useQuizStore = create<QuizState>()(
           questions: questionIds,
           creatorScore: correctCount,
           creatorName,
+          creatorReactions: state.creatorReactions,
         };
 
         const encoded = btoa(encodeURIComponent(JSON.stringify(duelData)));
@@ -882,10 +1150,23 @@ export const useQuizStore = create<QuizState>()(
             : 1;
         }
 
+        // Determine chest for duel creator
+        const commonChest = CHEST_TYPES[0];
+        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
+        let chestAvatarId: string | undefined;
+        if (Math.random() < commonChest.avatarChance) {
+          const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
+          if (commonAvatars.length > 0) {
+            chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
+          }
+        }
+
+        const newGamesByDay = { ...state.gamesByDay };
+        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
+
         set({
           duelMode: true,
           duelData,
-          phase: 'result',
           totalScore: newTotalScore,
           gamesPlayed: state.gamesPlayed + 1,
           totalCorrect: state.totalCorrect + correctCount,
@@ -894,11 +1175,16 @@ export const useQuizStore = create<QuizState>()(
           currentLeague: newLeague.id,
           dailyStreak: newDailyStreak,
           lastDailyAt: today,
+          duelsPlayed: state.duelsPlayed + 1,
+          gamesByDay: newGamesByDay,
+          pendingChest: { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } },
+          phase: 'result',
         });
 
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
         get().checkAchievements();
+        get().checkThemeUnlocks();
         get().syncToCloud();
 
         return shareLink;
@@ -927,6 +1213,39 @@ export const useQuizStore = create<QuizState>()(
             : 1;
         }
 
+        // Track duels won
+        const newDuelsWon = won ? state.duelsWon + 1 : state.duelsWon;
+        const newDuelsPlayed = state.duelsPlayed + 1;
+
+        // Gold chest for duel win
+        let pendingChest: ChestReward | null = null;
+        const commonChest = CHEST_TYPES[0];
+        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
+        let chestAvatarId: string | undefined;
+
+        if (won) {
+          const goldChest = CHEST_TYPES[2];
+          const goldCoins = randomInt(goldChest.coinRange[0], goldChest.coinRange[1]);
+          if (Math.random() < goldChest.avatarChance) {
+            const epicAvatars = AVATARS.filter(a => a.rarity === "epic" && !state.unlockedAvatars.includes(a.id));
+            if (epicAvatars.length > 0) {
+              chestAvatarId = epicAvatars[Math.floor(Math.random() * epicAvatars.length)].id;
+            }
+          }
+          pendingChest = { type: "gold", rewards: { coins: goldCoins, avatarId: chestAvatarId } };
+        } else {
+          if (Math.random() < commonChest.avatarChance) {
+            const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
+            if (commonAvatars.length > 0) {
+              chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
+            }
+          }
+          pendingChest = { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } };
+        }
+
+        const newGamesByDay = { ...state.gamesByDay };
+        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
+
         set({
           duelResult: {
             myScore: correctCount,
@@ -934,7 +1253,6 @@ export const useQuizStore = create<QuizState>()(
             opponentName,
             won,
           },
-          phase: 'duel_result',
           totalScore: newTotalScore,
           gamesPlayed: state.gamesPlayed + 1,
           totalCorrect: state.totalCorrect + correctCount,
@@ -943,12 +1261,187 @@ export const useQuizStore = create<QuizState>()(
           currentLeague: newLeague.id,
           dailyStreak: newDailyStreak,
           lastDailyAt: today,
+          duelsWon: newDuelsWon,
+          duelsPlayed: newDuelsPlayed,
+          gamesByDay: newGamesByDay,
+          pendingChest,
+          phase: 'duel_result',
         });
 
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
         get().checkAchievements();
+        get().checkThemeUnlocks();
         get().syncToCloud();
+      },
+
+      // ===== THEME ACTIONS =====
+
+      setTheme: (themeId) => {
+        const state = get();
+        if (!state.unlockedThemes.includes(themeId)) return;
+        set({ currentTheme: themeId });
+        get().syncToCloud();
+      },
+
+      unlockTheme: (themeId) => {
+        const state = get();
+        if (state.unlockedThemes.includes(themeId)) return;
+        set({ unlockedThemes: [...state.unlockedThemes, themeId] });
+        get().syncToCloud();
+      },
+
+      checkThemeUnlocks: () => {
+        const state = get();
+        for (const theme of THEMES) {
+          if (state.unlockedThemes.includes(theme.id)) continue;
+          let shouldUnlock = false;
+          switch (theme.unlockCondition) {
+            case "default": shouldUnlock = true; break;
+            case "level": shouldUnlock = state.level >= theme.unlockValue; break;
+            case "coins": shouldUnlock = state.coins >= theme.unlockValue; break;
+            case "duels": shouldUnlock = state.duelsWon >= theme.unlockValue; break;
+            case "streak": shouldUnlock = state.dailyStreak >= theme.unlockValue; break;
+          }
+          if (shouldUnlock) {
+            get().unlockTheme(theme.id);
+          }
+        }
+      },
+
+      // ===== CHEST ACTIONS =====
+
+      openChest: () => {
+        const state = get();
+        if (!state.pendingChest) return;
+
+        const chest = state.pendingChest;
+        let newUnlockedAvatars = [...state.unlockedAvatars];
+        if (chest.rewards.avatarId && !newUnlockedAvatars.includes(chest.rewards.avatarId)) {
+          newUnlockedAvatars.push(chest.rewards.avatarId);
+        }
+
+        set({
+          coins: state.coins + chest.rewards.coins,
+          unlockedAvatars: newUnlockedAvatars,
+          pendingChest: null,
+          phase: "result",
+        });
+
+        get().syncToCloud();
+      },
+
+      // ===== DAILY CHAIN =====
+
+      checkDailyChain: () => {
+        const state = get();
+        const today = getToday();
+
+        // Reset if missed a day
+        if (state.dailyChainDate) {
+          const lastDate = new Date(state.dailyChainDate);
+          const todayDate = new Date(today);
+          const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / 86400000);
+          if (diffDays > 1) {
+            // Missed a day, reset chain
+            set({
+              dailyChainDay: 0,
+              dailyChainCompleted: [false, false, false, false, false, false, false],
+              dailyChainDate: today,
+            });
+            return;
+          }
+        }
+
+        if (state.dailyChainDate !== today) {
+          set({ dailyChainDate: today });
+        }
+      },
+
+      claimDailyChain: (day: number) => {
+        const state = get();
+        if (day !== state.dailyChainDay) return;
+        if (state.dailyChainCompleted[day]) return;
+
+        const chainData = DAILY_CHAIN[day];
+        if (!chainData) return;
+
+        const newCompleted = [...state.dailyChainCompleted];
+        newCompleted[day] = true;
+
+        // Award rewards
+        if (chainData.rewardType === "coins" && chainData.reward > 0) {
+          set({
+            dailyChainCompleted: newCompleted,
+            dailyChainDay: day + 1,
+            coins: state.coins + chainData.reward,
+          });
+        } else if (chainData.rewardType === "silver_chest") {
+          // Award silver chest
+          const silverChest = CHEST_TYPES[1];
+          const silverCoins = randomInt(silverChest.coinRange[0], silverChest.coinRange[1]);
+          let silverAvatarId: string | undefined;
+          if (Math.random() < silverChest.avatarChance) {
+            const rareAvatars = AVATARS.filter(a => a.rarity === "rare" && !state.unlockedAvatars.includes(a.id));
+            if (rareAvatars.length > 0) {
+              silverAvatarId = rareAvatars[Math.floor(Math.random() * rareAvatars.length)].id;
+            }
+          }
+          set({
+            dailyChainCompleted: newCompleted,
+            dailyChainDay: day + 1,
+            pendingChest: { type: "silver", rewards: { coins: silverCoins, avatarId: silverAvatarId } },
+            phase: "chest",
+          });
+        }
+
+        get().syncToCloud();
+      },
+
+      // ===== SEASON =====
+
+      checkSeason: () => {
+        const state = get();
+        const currentSeason = getBiweeklySeason();
+        const currentSeasonStart = `${new Date().getFullYear()}-S${currentSeason}`;
+
+        if (state.seasonStart !== currentSeasonStart) {
+          set({
+            seasonStart: currentSeasonStart,
+            seasonScore: 0,
+          });
+        }
+      },
+
+      // ===== TOURNAMENT =====
+
+      fetchTournament: async () => {
+        const state = get();
+        const weekKey = getWeekKey();
+        set({ tournamentWeekKey: weekKey });
+
+        try {
+          const { supabase } = await import('./supabase');
+          const { data, error } = await supabase
+            .from('weekly_leaderboard')
+            .select('*')
+            .eq('week_key', weekKey)
+            .order('score', { ascending: false })
+            .limit(10);
+
+          if (!error && data) {
+            const entries: TournamentEntry[] = data.map((row: any, i: number) => ({
+              rank: i + 1,
+              name: row.player_name,
+              avatarId: row.avatar_id,
+              score: row.score,
+              isPlayer: row.telegram_id === Number(state.telegramId),
+            }));
+            set({ tournamentData: entries });
+          }
+        } catch (e) {
+          console.error('Failed to fetch tournament:', e);
+        }
       },
 
       resetAll: () => set(INITIAL_STATE),
@@ -978,6 +1471,21 @@ export const useQuizStore = create<QuizState>()(
         dailyTasks: state.dailyTasks,
         dailyTasksDate: state.dailyTasksDate,
         isCloudLoaded: state.isCloudLoaded,
+        // New persisted fields
+        currentTheme: state.currentTheme,
+        unlockedThemes: state.unlockedThemes,
+        duelsWon: state.duelsWon,
+        duelsPlayed: state.duelsPlayed,
+        survivalRecord: state.survivalRecord,
+        dailyChainDay: state.dailyChainDay,
+        dailyChainCompleted: state.dailyChainCompleted,
+        dailyChainDate: state.dailyChainDate,
+        seasonScore: state.seasonScore,
+        seasonStart: state.seasonStart,
+        categoryStats: state.categoryStats,
+        gamesByDay: state.gamesByDay,
+        gamesPlayedToday: state.gamesPlayedToday,
+        gamesPlayedTodayDate: state.gamesPlayedTodayDate,
       }),
     }
   )

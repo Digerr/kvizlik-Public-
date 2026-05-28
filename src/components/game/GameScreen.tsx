@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { CATEGORIES, type Question } from '@/lib/quiz-data';
+import { CATEGORIES, DUEL_REACTIONS, type Question } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Skull } from 'lucide-react';
 import { playCorrect, playWrong, playTick, playStreak } from '@/lib/sounds';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
@@ -28,6 +28,9 @@ export default function GameScreen() {
     powerUps,
     aiMode,
     isGeneratingQuestions,
+    gameMode,
+    duelMode,
+    duelData,
     selectOption,
     revealAnswer,
     nextQuestion,
@@ -35,6 +38,7 @@ export default function GameScreen() {
     setPhase,
     setIsGeneratingQuestions,
     addQuestions,
+    addCreatorReaction,
   } = useQuizStore();
 
   const { haptic } = useTelegram();
@@ -44,9 +48,17 @@ export default function GameScreen() {
   const popupIdRef = useRef(0);
   const [canExit, setCanExit] = useState(true);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showReactionBar, setShowReactionBar] = useState(false);
+  const [floatingReaction, setFloatingReaction] = useState<string | null>(null);
 
   const question = questions[currentQuestionIndex];
   const category = CATEGORIES.find(c => c.id === categoryId);
+  const isSurvival = gameMode === 'survival';
+
+  // Show opponent's reaction for duel challenger
+  const creatorReaction = duelMode && duelData?.creatorReactions
+    ? duelData.creatorReactions[currentQuestionIndex]
+    : null;
 
   // Fetch AI questions
   const fetchAiQuestions = useCallback(async () => {
@@ -73,12 +85,10 @@ export default function GameScreen() {
         addQuestions(newQuestions);
       } else {
         setIsGeneratingQuestions(false);
-        // If no questions generated, end game
         useQuizStore.getState().endGame();
       }
     } catch {
       setIsGeneratingQuestions(false);
-      // If generation fails, end game
       useQuizStore.getState().endGame();
     }
   }, [categoryId, setIsGeneratingQuestions, addQuestions]);
@@ -130,6 +140,15 @@ export default function GameScreen() {
     };
   }, [selectedOption, isRevealed, revealAnswer]);
 
+  // Show reaction bar after answering in duel mode
+  useEffect(() => {
+    if (isRevealed && duelMode && !duelData) {
+      setShowReactionBar(true);
+      const timer = setTimeout(() => setShowReactionBar(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isRevealed, currentQuestionIndex]);
+
   // Haptic on reveal + sounds
   useEffect(() => {
     if (isRevealed && question) {
@@ -169,8 +188,7 @@ export default function GameScreen() {
     const nextIndex = state.currentQuestionIndex + 1;
 
     if (nextIndex >= state.questions.length) {
-      // If AI mode is on, generate more questions instead of ending
-      if (state.aiMode) {
+      if (state.aiMode || state.gameMode === 'survival') {
         fetchAiQuestions();
       } else {
         nextQuestion();
@@ -180,9 +198,17 @@ export default function GameScreen() {
     }
   };
 
+  const handleReaction = (emoji: string) => {
+    haptic('light');
+    addCreatorReaction(emoji);
+    setFloatingReaction(emoji);
+    setTimeout(() => setFloatingReaction(null), 1500);
+    setShowReactionBar(false);
+  };
+
   if (!question && !isGeneratingQuestions) {
     return (
-      <div className="min-h-[100dvh] bg-[#0f0a1e] flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-[var(--theme-bg)] flex items-center justify-center">
         <p className="text-white/50">Загрузка...</p>
       </div>
     );
@@ -191,6 +217,10 @@ export default function GameScreen() {
   const timerPercent = (timerRemaining / timePerQuestion) * 100;
   const timerColor = timerRemaining <= 3 ? 'text-red-400' : timerRemaining <= 7 ? 'text-yellow-400' : 'text-white';
 
+  // Survival difficulty indicator
+  const survivalDifficulty = isSurvival ? Math.floor(currentQuestionIndex / 5) + 1 : 0;
+  const survivalMultiplier = isSurvival ? 1 + Math.floor(currentQuestionIndex / 5) * 0.5 : 1;
+
   const getOptionStyle = (index: number) => {
     if (!question) return '';
     const isRemoved = fiftyFiftyRemoved.includes(index);
@@ -198,7 +228,7 @@ export default function GameScreen() {
     const isSelected = index === selectedOption;
 
     if (isRemoved) {
-      return 'bg-[#1a1235]/50 border-white/5 text-white/20 pointer-events-none';
+      return 'bg-[var(--theme-card)]/50 border-white/5 text-white/20 pointer-events-none';
     }
 
     if (isRevealed) {
@@ -208,7 +238,7 @@ export default function GameScreen() {
       if (isSelected && !isCorrectOption) {
         return 'bg-red-500/20 border-red-500/50 text-red-300';
       }
-      return 'bg-[#1a1235]/50 border-white/5 text-white/30';
+      return 'bg-[var(--theme-card)]/50 border-white/5 text-white/30';
     }
 
     if (isHintActive && isCorrectOption) {
@@ -219,11 +249,11 @@ export default function GameScreen() {
       return 'bg-purple-500/20 border-purple-500/50 text-purple-200';
     }
 
-    return 'bg-[#1a1235] border-white/10 text-white/90 hover:bg-[#221a45] active:scale-[0.98]';
+    return 'bg-[var(--theme-card)] border-white/10 text-white/90 hover:bg-[var(--theme-card-hover)] active:scale-[0.98]';
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] flex flex-col px-4 py-3">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] flex flex-col px-4 py-3">
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -243,6 +273,11 @@ export default function GameScreen() {
           {aiMode && (
             <span className="bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
               AI
+            </span>
+          )}
+          {isSurvival && (
+            <span className="bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1">
+              <Skull className="w-3 h-3" /> Выживание
             </span>
           )}
         </div>
@@ -285,6 +320,15 @@ export default function GameScreen() {
         </div>
       </div>
 
+      {/* Survival multiplier indicator */}
+      {isSurvival && survivalMultiplier > 1 && (
+        <div className="text-center mb-2">
+          <span className="bg-red-500/20 text-red-300 text-[10px] font-bold px-2 py-1 rounded-full">
+            Множитель x{survivalMultiplier.toFixed(1)}
+          </span>
+        </div>
+      )}
+
       {/* Power-ups */}
       <div className="flex gap-2 mb-4 justify-end">
         <button
@@ -292,8 +336,8 @@ export default function GameScreen() {
           disabled={powerUps.freeze <= 0 || isRevealed}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-all ${
             powerUps.freeze <= 0 || isRevealed
-              ? 'bg-[#1a1235]/50 text-white/20 border border-white/5'
-              : 'bg-[#1a1235] text-white/80 border border-white/10 hover:bg-[#221a45] active:scale-95'
+              ? 'bg-[var(--theme-card)]/50 text-white/20 border border-white/5'
+              : 'bg-[var(--theme-card)] text-white/80 border border-white/10 hover:bg-[var(--theme-card-hover)] active:scale-95'
           }`}
         >
           ❄️ <span>{powerUps.freeze}</span>
@@ -303,8 +347,8 @@ export default function GameScreen() {
           disabled={powerUps.fiftyFifty <= 0 || isRevealed || isFiftyFiftyActive}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-all ${
             powerUps.fiftyFifty <= 0 || isRevealed || isFiftyFiftyActive
-              ? 'bg-[#1a1235]/50 text-white/20 border border-white/5'
-              : 'bg-[#1a1235] text-white/80 border border-white/10 hover:bg-[#221a45] active:scale-95'
+              ? 'bg-[var(--theme-card)]/50 text-white/20 border border-white/5'
+              : 'bg-[var(--theme-card)] text-white/80 border border-white/10 hover:bg-[var(--theme-card-hover)] active:scale-95'
           }`}
         >
           ✂️ <span>{powerUps.fiftyFifty}</span>
@@ -314,8 +358,8 @@ export default function GameScreen() {
           disabled={powerUps.hint <= 0 || isRevealed || isHintActive}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-all ${
             powerUps.hint <= 0 || isRevealed || isHintActive
-              ? 'bg-[#1a1235]/50 text-white/20 border border-white/5'
-              : 'bg-[#1a1235] text-white/80 border border-white/10 hover:bg-[#221a45] active:scale-95'
+              ? 'bg-[var(--theme-card)]/50 text-white/20 border border-white/5'
+              : 'bg-[var(--theme-card)] text-white/80 border border-white/10 hover:bg-[var(--theme-card-hover)] active:scale-95'
           }`}
         >
           💡 <span>{powerUps.hint}</span>
@@ -329,7 +373,7 @@ export default function GameScreen() {
         animate={{ opacity: 1, x: 0 }}
         className="flex-1 flex flex-col"
       >
-        <div className="bg-[#1a1235] border border-white/10 rounded-2xl p-5 mb-5">
+        <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-5 mb-5">
           <p className="text-white text-lg font-semibold text-center leading-relaxed">
             {question?.question || 'Загрузка вопроса...'}
           </p>
@@ -384,7 +428,7 @@ export default function GameScreen() {
 
         {/* Next Button */}
         <AnimatePresence>
-          {isRevealed && (
+          {isRevealed && !isSurvival && (
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -397,7 +441,73 @@ export default function GameScreen() {
             </motion.button>
           )}
         </AnimatePresence>
+
+        {/* Survival: auto-advance text */}
+        {isRevealed && isSurvival && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-3 text-red-400/60 text-xs"
+          >
+            {selectedOption === question?.correctIndex ? '✅ Правильно! Следующий вопрос...' : '💀 Неправильно! Игра окончена...'}
+          </motion.div>
+        )}
       </motion.div>
+
+      {/* Duel Reaction Bar */}
+      <AnimatePresence>
+        {showReactionBar && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-4 left-4 right-4 bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 z-40"
+          >
+            <p className="text-white/40 text-[10px] mb-2 text-center">Отправить реакцию</p>
+            <div className="flex justify-center gap-2">
+              {DUEL_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => handleReaction(emoji)}
+                  className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-xl active:scale-90 transition-transform"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Opponent Reaction (floating) */}
+      <AnimatePresence>
+        {isRevealed && creatorReaction && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, y: 0 }}
+            animate={{ opacity: 1, scale: 1.5, y: -30 }}
+            exit={{ opacity: 0, y: -60 }}
+            transition={{ duration: 1.5 }}
+            className="fixed top-1/3 right-8 text-4xl pointer-events-none z-50"
+          >
+            {creatorReaction}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Creator floating reaction */}
+      <AnimatePresence>
+        {floatingReaction && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, y: 0 }}
+            animate={{ opacity: 1, scale: 1.5, y: -30 }}
+            exit={{ opacity: 0, y: -60 }}
+            transition={{ duration: 1.5 }}
+            className="fixed top-1/3 left-8 text-4xl pointer-events-none z-50"
+          >
+            {floatingReaction}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Score Popup */}
       <AnimatePresence>
@@ -430,7 +540,7 @@ export default function GameScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#1a1235] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              className="bg-[var(--theme-card)] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             >
               <p className="text-white font-bold text-lg text-center mb-2">Выйти из игры?</p>
               <p className="text-white/50 text-sm text-center mb-5">Прогресс этой игры не сохранится</p>
@@ -464,9 +574,9 @@ export default function GameScreen() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#0f0a1e]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
+            className="fixed inset-0 bg-[var(--theme-bg)]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
           >
-            <div className="bg-[#1a1235] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
+            <div className="bg-[var(--theme-card)] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
               <div className="relative">
                 <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
                 <span className="absolute inset-0 flex items-center justify-center text-xl">🤖</span>

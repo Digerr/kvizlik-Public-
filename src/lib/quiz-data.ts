@@ -88,6 +88,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "level_5", name: "Опытный", description: "Достигни 5 уровня", emoji: "⭐", condition: "level >= 5", reward: 50 },
   { id: "level_10", name: "Ветеран", description: "Достигнь 10 уровня", emoji: "🌟", condition: "level >= 10", reward: 150 },
   { id: "hundred_correct", name: "Сотня!", description: "Ответь правильно на 100 вопросов", emoji: "💯", condition: "totalCorrect >= 100", reward: 100 },
+  // Survival achievements
+  { id: "survival_10", name: "Выживший", description: "Ответь правильно на 10 вопросов подряд в Выживании", emoji: "💀", condition: "survivalRecord >= 10", reward: 50 },
+  { id: "survival_20", name: "Неуязвимый", description: "Ответь правильно на 20 вопросов подряд в Выживании", emoji: "🛡️", condition: "survivalRecord >= 20", reward: 150 },
+  { id: "survival_50", name: "Бессмертный", description: "Ответь правильно на 50 вопросов подряд в Выживании", emoji: "⚡", condition: "survivalRecord >= 50", reward: 500 },
+  { id: "duel_winner_10", name: "Дуэлянт", description: "Выиграй 10 дуэлей", emoji: "⚔️", condition: "duelsWon >= 10", reward: 100 },
 ];
 
 export interface PowerUp {
@@ -157,6 +162,199 @@ export const DAILY_TASKS_TEMPLATE: Omit<DailyTask, "id">[] = [
   { name: "Серия!", description: "Набей серию из 3 правильных ответов", emoji: "⚡", target: 3, reward: 15, type: "streak" },
   { name: "Разнообразие", description: "Сыграй в 2 разных категории", emoji: "🌈", target: 2, reward: 10, type: "category" },
 ];
+
+// ==================== THEMES ====================
+
+export interface ThemeDef {
+  id: string;
+  name: string;
+  emoji: string;
+  unlockCondition: "default" | "level" | "coins" | "duels" | "streak";
+  unlockValue: number;
+  colors: {
+    bg: string;
+    card: string;
+    cardHover: string;
+    accentFrom: string;
+    accentTo: string;
+    textAccent?: string;
+  };
+}
+
+export const THEMES: ThemeDef[] = [
+  {
+    id: "neon",
+    name: "Неон",
+    emoji: "🌙",
+    unlockCondition: "default",
+    unlockValue: 0,
+    colors: {
+      bg: "#0f0a1e",
+      card: "#1a1235",
+      cardHover: "#221a45",
+      accentFrom: "#9333ea",
+      accentTo: "#2563eb",
+    },
+  },
+  {
+    id: "retro",
+    name: "Ретро",
+    emoji: "🕹️",
+    unlockCondition: "level",
+    unlockValue: 5,
+    colors: {
+      bg: "#0a0f0a",
+      card: "#0f1a0f",
+      cardHover: "#1a2e1a",
+      accentFrom: "#22c55e",
+      accentTo: "#16a34a",
+      textAccent: "#4ade80",
+    },
+  },
+  {
+    id: "cosmos",
+    name: "Космос",
+    emoji: "🌌",
+    unlockCondition: "level",
+    unlockValue: 10,
+    colors: {
+      bg: "#05051a",
+      card: "#0f0f2e",
+      cardHover: "#1a1a4e",
+      accentFrom: "#6366f1",
+      accentTo: "#06b6d4",
+    },
+  },
+  {
+    id: "candy",
+    name: "Кэнди",
+    emoji: "🍬",
+    unlockCondition: "level",
+    unlockValue: 15,
+    colors: {
+      bg: "#1a0a1e",
+      card: "#2e0f2e",
+      cardHover: "#4e1a4e",
+      accentFrom: "#ec4899",
+      accentTo: "#f43f5e",
+    },
+  },
+  {
+    id: "pirate",
+    name: "Пират",
+    emoji: "🏴‍☠️",
+    unlockCondition: "coins",
+    unlockValue: 500,
+    colors: {
+      bg: "#0f0a0a",
+      card: "#1a120f",
+      cardHover: "#2e2015",
+      accentFrom: "#d97706",
+      accentTo: "#ca8a04",
+    },
+  },
+  {
+    id: "fire",
+    name: "Огонь",
+    emoji: "🔥",
+    unlockCondition: "duels",
+    unlockValue: 10,
+    colors: {
+      bg: "#1a0a05",
+      card: "#2e120a",
+      cardHover: "#4e1f10",
+      accentFrom: "#dc2626",
+      accentTo: "#ea580c",
+    },
+  },
+  {
+    id: "ice",
+    name: "Лёд",
+    emoji: "❄️",
+    unlockCondition: "streak",
+    unlockValue: 7,
+    colors: {
+      bg: "#050a1a",
+      card: "#0a122e",
+      cardHover: "#10204e",
+      accentFrom: "#3b82f6",
+      accentTo: "#22d3ee",
+    },
+  },
+];
+
+// ==================== DAILY CHAIN (7 дней) ====================
+
+export interface DailyChainDay {
+  day: number;
+  task: string;
+  reward: number;
+  rewardType: "coins" | "silver_chest";
+}
+
+export const DAILY_CHAIN: DailyChainDay[] = [
+  { day: 1, task: "Сыграй 1 игру", reward: 30, rewardType: "coins" },
+  { day: 2, task: "Ответь правильно на 5 вопросов", reward: 50, rewardType: "coins" },
+  { day: 3, task: "Сыграй 2 игры", reward: 75, rewardType: "coins" },
+  { day: 4, task: "Выиграй дуэль ИЛИ 10 правильных ответов", reward: 100, rewardType: "coins" },
+  { day: 5, task: "Набей серию из 5 правильных ответов", reward: 150, rewardType: "coins" },
+  { day: 6, task: "Сыграй 3 игры", reward: 200, rewardType: "coins" },
+  { day: 7, task: "Выполни все задания выше", reward: 0, rewardType: "silver_chest" },
+];
+
+// ==================== CHEST TYPES ====================
+
+export interface ChestType {
+  id: "common" | "silver" | "gold";
+  emoji: string;
+  name: string;
+  description: string;
+  coinRange: [number, number];
+  avatarChance: number;
+  avatarRarity: "common" | "rare" | "epic";
+}
+
+export const CHEST_TYPES: ChestType[] = [
+  {
+    id: "common",
+    emoji: "🪙",
+    name: "Обычный сундук",
+    description: "После каждой игры",
+    coinRange: [5, 20],
+    avatarChance: 0.1,
+    avatarRarity: "common",
+  },
+  {
+    id: "silver",
+    emoji: "🥈",
+    name: "Серебряный сундук",
+    description: "5 игр за день",
+    coinRange: [15, 40],
+    avatarChance: 0.2,
+    avatarRarity: "rare",
+  },
+  {
+    id: "gold",
+    emoji: "🥇",
+    name: "Золотой сундук",
+    description: "Победа в дуэли",
+    coinRange: [30, 80],
+    avatarChance: 0.15,
+    avatarRarity: "epic",
+  },
+];
+
+// ==================== DUEL REACTIONS ====================
+
+export const DUEL_REACTIONS = ["😱", "😰", "🔥", "💀", "🤯", "😎", "👍", "😂"] as const;
+
+// ==================== SURVIVAL MILESTONES ====================
+
+export const SURVIVAL_MILESTONES = [
+  { correct: 10, coins: 50 },
+  { correct: 20, coins: 100 },
+  { correct: 50, coins: 500 },
+] as const;
 
 export function getQuestionsForCategory(categoryId: string, count: number = 10, seenIds: string[] = []): Question[] {
   let pool = QUESTIONS.filter(q => q.category === categoryId && !seenIds.includes(q.id));

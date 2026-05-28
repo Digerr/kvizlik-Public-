@@ -45,6 +45,12 @@
 
 :root {
   --radius: 0.625rem;
+  /* Theme variables - defaults to neon theme */
+  --theme-bg: #0f0a1e;
+  --theme-card: #1a1235;
+  --theme-card-hover: #221a45;
+  --theme-accent-from: #9333ea;
+  --theme-accent-to: #2563eb;
   --background: oklch(0.08 0.04 290);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.12 0.03 290);

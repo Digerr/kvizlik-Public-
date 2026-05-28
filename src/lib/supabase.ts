@@ -25,6 +25,18 @@ export interface ProfileRow {
   power_ups: { freeze: number; fiftyFifty: number; hint: number };
   seen_questions: string[];
   categories_played: string[];
+  // New fields
+  current_theme?: string;
+  unlocked_themes?: string[];
+  duels_won?: number;
+  duels_played?: number;
+  survival_record?: number;
+  season_score?: number;
+  daily_chain_day?: number;
+  daily_chain_completed?: boolean[];
+  daily_chain_date?: string | null;
+  category_stats?: Record<string, { played: number; correct: number }>;
+  games_by_day?: Record<string, number>;
   updated_at: string;
 }
 
@@ -103,4 +115,27 @@ export async function getLeaderboard(limit: number = 50): Promise<LeaderboardRow
 
   if (error || !data) return [];
   return data as LeaderboardRow[];
+}
+
+// Update weekly leaderboard
+export async function updateWeeklyLeaderboard(telegramId: number, playerName: string, avatarId: string, score: number, weekKey: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('weekly_leaderboard')
+    .upsert(
+      {
+        telegram_id: telegramId,
+        player_name: playerName,
+        avatar_id: avatarId,
+        score,
+        week_key: weekKey,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'telegram_id,week_key' }
+    );
+
+  if (error) {
+    console.error('Failed to update weekly leaderboard:', error);
+    return false;
+  }
+  return true;
 }
