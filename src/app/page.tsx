@@ -16,6 +16,7 @@ import DuelResultScreen from '@/components/game/DuelResultScreen';
 import ThemesScreen from '@/components/game/ThemesScreen';
 import ChestScreen from '@/components/game/ChestScreen';
 import TournamentScreen from '@/components/game/TournamentScreen';
+import FaqScreen from '@/components/game/FaqScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
@@ -35,6 +36,7 @@ const phaseComponents: Record<string, React.ComponentType> = {
   themes: ThemesScreen,
   chest: ChestScreen,
   tournament: TournamentScreen,
+  faq: FaqScreen,
 };
 
 function useDuelUrlHandler() {

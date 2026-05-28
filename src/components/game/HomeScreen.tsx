@@ -282,18 +282,35 @@ export default function HomeScreen() {
         </button>
       </motion.div>
 
-      {/* Profile Button */}
-      <motion.button
+      {/* Third row: FAQ + Profile */}
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
-        onClick={() => { haptic('light'); setPhase('profile'); }}
-        className="w-full bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all mb-4"
+        transition={{ delay: 0.34 }}
+        className="grid grid-cols-2 gap-3 mb-4"
       >
-        <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center text-lg">👤</div>
-        <span className="text-white text-sm font-medium">Профиль</span>
-        <ChevronRight className="w-4 h-4 text-white/30 ml-auto" />
-      </motion.button>
+        <button
+          onClick={() => { haptic('light'); setPhase('faq'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center text-lg">❓</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">FAQ</p>
+            <p className="text-white/40 text-[10px]">Информация</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('profile'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center text-lg">👤</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Профиль</p>
+            <p className="text-white/40 text-[10px]">Статистика</p>
+          </div>
+        </button>
+      </motion.div>
 
       {/* Daily Task Preview */}
       {unclaimedTask && (
@@ -317,7 +334,7 @@ export default function HomeScreen() {
 
       {/* Footer */}
       <div className="mt-auto pt-6 text-center">
-        <p className="text-white/20 text-[10px]">КВИЗЛИК v3.0 • made by @SergoDev</p>
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v3.1 • made by @SergoDev</p>
       </div>
     </div>
   );

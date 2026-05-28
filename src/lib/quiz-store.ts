@@ -36,7 +36,8 @@ export type QuizPhase =
   | "duel_result"
   | "themes"
   | "chest"
-  | "tournament";
+  | "tournament"
+  | "faq";
 
 export interface DuelData {
   questions: string[];
@@ -73,7 +74,7 @@ export interface DailyTaskProgress {
   emoji: string;
   target: number;
   reward: number;
-  type: "games" | "correct" | "streak" | "category";
+  type: "games" | "correct" | "streak" | "category" | "duel";
   progress: number;
   claimed: boolean;
 }
@@ -282,7 +283,7 @@ export interface TournamentEntry {
 
 function generateDailyTasks(): DailyTaskProgress[] {
   const shuffled = [...DAILY_TASKS_TEMPLATE].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3).map((t, i) => ({
+  return shuffled.slice(0, 5).map((t, i) => ({
     id: `daily_${i}`,
     name: t.name,
     description: t.description,
@@ -437,7 +438,37 @@ export const useQuizStore = create<QuizState>()(
               dailyStreak: state.dailyStreak,
             };
 
-            const merged = {
+            // If cloud data is way ahead, just use cloud data entirely
+            const shouldForceCloud = profile.level > localState.level + 2;
+
+            const merged = shouldForceCloud ? {
+              playerName: profile.player_name || state.playerName,
+              avatarId: profile.avatar_id || state.avatarId,
+              totalScore: profile.total_score,
+              totalXP: profile.total_xp,
+              gamesPlayed: profile.games_played,
+              totalCorrect: profile.total_correct,
+              totalQuestions: profile.total_questions,
+              bestStreak: profile.best_streak,
+              coins: profile.coins,
+              level: profile.level,
+              currentLeague: profile.current_league || state.currentLeague,
+              dailyStreak: profile.daily_streak,
+              lastDailyAt: profile.last_daily_at || state.lastDailyAt,
+              unlockedAvatars: profile.unlocked_avatars?.length > 1 ? profile.unlocked_avatars : state.unlockedAvatars,
+              unlockedAchievements: profile.unlocked_achievements?.length > 0 ? profile.unlocked_achievements : state.unlockedAchievements,
+              powerUps: profile.power_ups || state.powerUps,
+              seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
+              categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
+              currentTheme: (profile as any).current_theme || state.currentTheme,
+              unlockedThemes: (profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+              duelsWon: (profile as any).duels_won || 0,
+              duelsPlayed: (profile as any).duels_played || 0,
+              survivalRecord: (profile as any).survival_record || 0,
+              seasonScore: (profile as any).season_score || 0,
+              categoryStats: (profile as any).category_stats || state.categoryStats,
+              gamesByDay: (profile as any).games_by_day || state.gamesByDay,
+            } : {
               playerName: profile.player_name || state.playerName,
               avatarId: profile.avatar_id || state.avatarId,
               totalScore: Math.max(profile.total_score, localState.totalScore),
@@ -1043,6 +1074,18 @@ export const useQuizStore = create<QuizState>()(
             case "survival_20": earned = state.survivalRecord >= 20; break;
             case "survival_50": earned = state.survivalRecord >= 50; break;
             case "duel_winner_10": earned = state.duelsWon >= 10; break;
+            case "hundred_games": earned = state.gamesPlayed >= 100; break;
+            case "streak_15": earned = state.bestStreak >= 15; break;
+            case "streak_20": earned = state.bestStreak >= 20; break;
+            case "coins_500": earned = state.coins >= 500; break;
+            case "coins_1000": earned = state.coins >= 1000; break;
+            case "level_15": earned = state.level >= 15; break;
+            case "level_25": earned = state.level >= 25; break;
+            case "five_hundred_correct": earned = state.totalCorrect >= 500; break;
+            case "thousand_correct": earned = state.totalCorrect >= 1000; break;
+            case "duel_first": earned = (state as any).duelsPlayed >= 1; break;
+            case "duel_master": earned = (state as any).duelsWon >= 25; break;
+            case "theme_collector": earned = (state as any).unlockedThemes?.length >= 4; break;
           }
 
           if (earned) {
@@ -1183,6 +1226,7 @@ export const useQuizStore = create<QuizState>()(
 
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
+        get().updateDailyProgress('duel', 1);
         get().checkAchievements();
         get().checkThemeUnlocks();
         get().syncToCloud();
@@ -1270,6 +1314,8 @@ export const useQuizStore = create<QuizState>()(
 
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
+        get().updateDailyProgress('duel', 1);
+        if (won) get().updateDailyProgress('duel', 1); // extra for win task
         get().checkAchievements();
         get().checkThemeUnlocks();
         get().syncToCloud();

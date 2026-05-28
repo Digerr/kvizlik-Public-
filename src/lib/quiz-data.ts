@@ -93,6 +93,25 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "survival_20", name: "Неуязвимый", description: "Ответь правильно на 20 вопросов подряд в Выживании", emoji: "🛡️", condition: "survivalRecord >= 20", reward: 150 },
   { id: "survival_50", name: "Бессмертный", description: "Ответь правильно на 50 вопросов подряд в Выживании", emoji: "⚡", condition: "survivalRecord >= 50", reward: 500 },
   { id: "duel_winner_10", name: "Дуэлянт", description: "Выиграй 10 дуэлей", emoji: "⚔️", condition: "duelsWon >= 10", reward: 100 },
+  // More game count achievements
+  { id: "hundred_games", name: "Легенда", description: "Сыграй 100 игр", emoji: "👑", condition: "gamesPlayed >= 100", reward: 500 },
+  // More streak achievements
+  { id: "streak_15", name: "Неудержимый!", description: "Ответь правильно 15 раз подряд", emoji: "💫", condition: "bestStreak >= 15", reward: 200 },
+  { id: "streak_20", name: "Бог знаний!", description: "Ответь правильно 20 раз подряд", emoji: "🧿", condition: "bestStreak >= 20", reward: 300 },
+  // More coin achievements
+  { id: "coins_500", name: "Богач", description: "Накопи 500 монет", emoji: "💰", condition: "coins >= 500", reward: 75 },
+  { id: "coins_1000", name: "Магнат", description: "Накопи 1000 монет", emoji: "🏦", condition: "coins >= 1000", reward: 150 },
+  // More level achievements
+  { id: "level_15", name: "Мастер", description: "Достигни 15 уровня", emoji: "🎖️", condition: "level >= 15", reward: 200 },
+  { id: "level_25", name: "Грандмастер", description: "Достигни 25 уровня", emoji: "🏅", condition: "level >= 25", reward: 400 },
+  // More correct answer achievements
+  { id: "five_hundred_correct", name: "Полтысячи!", description: "Ответь правильно на 500 вопросов", emoji: "🌟", condition: "totalCorrect >= 500", reward: 300 },
+  { id: "thousand_correct", name: "Тысяча!", description: "Ответь правильно на 1000 вопросов", emoji: "💫", condition: "totalCorrect >= 1000", reward: 500 },
+  // Duel achievements
+  { id: "duel_first", name: "Первая дуэль", description: "Сыграй свою первую дуэль", emoji: "⚔️", condition: "duelsPlayed >= 1", reward: 25 },
+  { id: "duel_master", name: "Мастер дуэлей", description: "Выиграй 25 дуэлей", emoji: "🗡️", condition: "duelsWon >= 25", reward: 300 },
+  // Theme achievement
+  { id: "theme_collector", name: "Коллекционер", description: "Разблокируй 4 темы оформления", emoji: "🎨", condition: "unlockedThemes >= 4", reward: 150 },
 ];
 
 export interface PowerUp {
@@ -128,6 +147,22 @@ export const AVATARS: Avatar[] = [
   { id: "alien", name: "Инопланетянин", emoji: "👽", price: 300, rarity: "epic" },
   { id: "crown", name: "Корона", emoji: "👑", price: 500, rarity: "legendary" },
   { id: "diamond", name: "Алмаз", emoji: "💠", price: 800, rarity: "legendary" },
+  // New common avatars (cheaper, entry-level)
+  { id: "penguin", name: "Пингвин", emoji: "🐧", price: 15, rarity: "common" },
+  { id: "monkey", name: "Обезьяна", emoji: "🐵", price: 25, rarity: "common" },
+  { id: "robot", name: "Робот", emoji: "🤖", price: 40, rarity: "common" },
+  // New rare avatars
+  { id: "ninja", name: "Ниндзя", emoji: "🥷", price: 100, rarity: "rare" },
+  { id: "ghost", name: "Призрак", emoji: "👻", price: 150, rarity: "rare" },
+  { id: "pirate", name: "Пират", emoji: "🏴‍☠️", price: 180, rarity: "rare" },
+  // New epic avatars
+  { id: "astronaut", name: "Космонавт", emoji: "🧑‍🚀", price: 350, rarity: "epic" },
+  { id: "vampire", name: "Вампир", emoji: "🧛", price: 400, rarity: "epic" },
+  { id: "superhero", name: "Супергерой", emoji: "🦸", price: 450, rarity: "epic" },
+  // New legendary avatars
+  { id: "phoenix", name: "Феникс", emoji: "🔥", price: 600, rarity: "legendary" },
+  { id: "galaxy", name: "Галактика", emoji: "🌌", price: 1000, rarity: "legendary" },
+  { id: "infinity", name: "Бесконечность", emoji: "♾️", price: 1500, rarity: "legendary" },
 ];
 
 export const RARITY_COLORS: Record<string, string> = {
@@ -151,16 +186,22 @@ export interface DailyTask {
   emoji: string;
   target: number;
   reward: number;
-  type: "games" | "correct" | "streak" | "category";
+  type: "games" | "correct" | "streak" | "category" | "duel";
 }
 
 export const DAILY_TASKS_TEMPLATE: Omit<DailyTask, "id">[] = [
   { name: "Разминка", description: "Сыграй 1 игру", emoji: "🎯", target: 1, reward: 5, type: "games" },
   { name: "Три попытки", description: "Сыграй 3 игры", emoji: "🎲", target: 3, reward: 15, type: "games" },
+  { name: "Марафон", description: "Сыграй 5 игр", emoji: "🏃", target: 5, reward: 30, type: "games" },
   { name: "Меткость", description: "Ответь правильно на 5 вопросов", emoji: "🎯", target: 5, reward: 10, type: "correct" },
   { name: "Снайпер", description: "Ответь правильно на 10 вопросов", emoji: "🔫", target: 10, reward: 25, type: "correct" },
+  { name: "Пулемётчик", description: "Ответь правильно на 20 вопросов", emoji: "🔫", target: 20, reward: 40, type: "correct" },
   { name: "Серия!", description: "Набей серию из 3 правильных ответов", emoji: "⚡", target: 3, reward: 15, type: "streak" },
+  { name: "Огненная серия!", description: "Набей серию из 5 правильных ответов", emoji: "🔥", target: 5, reward: 30, type: "streak" },
   { name: "Разнообразие", description: "Сыграй в 2 разных категории", emoji: "🌈", target: 2, reward: 10, type: "category" },
+  { name: "Исследователь", description: "Сыграй в 3 разных категории", emoji: "🗺️", target: 3, reward: 25, type: "category" },
+  { name: "Дуэлянт", description: "Сыграй 1 дуэль", emoji: "⚔️", target: 1, reward: 20, type: "duel" },
+  { name: "Воин", description: "Выиграй 1 дуэль", emoji: "🛡️", target: 1, reward: 30, type: "duel" },
 ];
 
 // ==================== THEMES ====================
@@ -359,6 +400,11 @@ export const SURVIVAL_MILESTONES = [
 export function getQuestionsForCategory(categoryId: string, count: number = 10, seenIds: string[] = []): Question[] {
   let pool = QUESTIONS.filter(q => q.category === categoryId && !seenIds.includes(q.id));
   if (pool.length < count) {
+    // Include seen questions but deprioritize them — put unseen first
+    const seen = QUESTIONS.filter(q => q.category === categoryId && seenIds.includes(q.id));
+    pool = [...pool, ...seen.sort(() => Math.random() - 0.5)];
+  }
+  if (pool.length < count) {
     pool = QUESTIONS.filter(q => q.category === categoryId);
   }
   const shuffled = [...pool].sort(() => Math.random() - 0.5);
@@ -366,26 +412,31 @@ export function getQuestionsForCategory(categoryId: string, count: number = 10, 
 }
 
 export function getMixedQuestions(count: number = 10, seenIds: string[] = []): Question[] {
-  let pool = QUESTIONS.filter(q => !seenIds.includes(q.id));
-  if (pool.length < count) {
-    pool = [...QUESTIONS];
-  }
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  let unseen = QUESTIONS.filter(q => !seenIds.includes(q.id));
+  let seen = QUESTIONS.filter(q => seenIds.includes(q.id));
+  // Prioritize unseen, shuffle both pools
+  unseen = unseen.sort(() => Math.random() - 0.5);
+  seen = seen.sort(() => Math.random() - 0.5);
+  const pool = [...unseen, ...seen];
+  return pool.slice(0, count);
 }
 
 export function getQuestionsByDifficulty(categoryId: string | null, difficulty: number, count: number = 10, seenIds: string[] = []): Question[] {
-  let pool = categoryId
+  const allForCategory = categoryId
     ? QUESTIONS.filter(q => q.category === categoryId && q.difficulty <= difficulty)
     : QUESTIONS.filter(q => q.difficulty <= difficulty);
-  pool = pool.filter(q => !seenIds.includes(q.id));
+
+  let unseen = allForCategory.filter(q => !seenIds.includes(q.id));
+  let seen = allForCategory.filter(q => seenIds.includes(q.id));
+
+  unseen = unseen.sort(() => Math.random() - 0.5);
+  seen = seen.sort(() => Math.random() - 0.5);
+
+  let pool = [...unseen, ...seen];
   if (pool.length < count) {
-    pool = categoryId
-      ? QUESTIONS.filter(q => q.category === categoryId && q.difficulty <= difficulty)
-      : QUESTIONS.filter(q => q.difficulty <= difficulty);
+    pool = [...allForCategory].sort(() => Math.random() - 0.5);
   }
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  return pool.slice(0, count);
 }
 
 export function getQuestionsByIds(ids: string[]): Question[] {

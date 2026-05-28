@@ -1,0 +1,111 @@
+'use client';
+
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useQuizStore } from '@/lib/quiz-store';
+import { useTelegram } from '@/hooks/use-telegram';
+import { ArrowLeft } from 'lucide-react';
+
+const FAQ_ITEMS = [
+  {
+    question: 'Как играть?',
+    answer: 'Выбери категорию или режим, отвечай на вопросы за отведённое время. Чем быстрее и точнее отвечаешь — тем больше очков и монет получаешь. Используй паверапы (заморозка, 50/50, подсказка) чтобы помочь себе в сложных ситуациях.',
+  },
+  {
+    question: 'Что такое лиги?',
+    answer: 'Лиги отражают твой уровень игры. Начинаешь с Бронзы и продвигаешься к Серебру, Золоту, Платине и Алмазу. Переход происходит автоматически при наборе определённого количества очков. Каждые 2 недели начинается новый сезон — соревнуйся за повышение в лиге!',
+  },
+  {
+    question: 'Зачем нужны монеты?',
+    answer: 'Монеты — внутриигровая валюта. За них можно купить паверапы (заморозка, 50/50, подсказка) и аватары в магазине. Монеты зарабатываются за каждую игру: чем лучше результат, тем больше монет. Также монеты можно получить за выполнения заданий и достижений.',
+  },
+  {
+    question: 'Как работают дуэли?',
+    answer: 'Создай дуэль — пройди 10 вопросов, и поделись ссылкой с другом в Telegram. Он пройдёт те же вопросы, и его результат сравнится с твоим. Победитель получает бонусные 20 монет!',
+  },
+  {
+    question: 'Что такое режим «Выживание»?',
+    answer: 'В режиме Выживание ты играешь пока не ошибёшься. Одна ошибка — и игра окончена! Зато за каждый 5 правильных ответов множитель очков увеличивается (x1 → x1.5 → x2 → x2.5 → x3). Доберись до 10, 20 или 50 правильных ответов за особые награды!',
+  },
+  {
+    question: 'Что такое сундуки?',
+    answer: 'После каждой игры выпадает сундук с наградой. Обычный — после каждой игры, Серебряный — за 5 игр в день, Золотой — за победу в дуэли. В сундуках можно найти монеты и даже редкие аватары!',
+  },
+  {
+    question: 'Как разблокировать темы?',
+    answer: 'Темы оформления разблокируются по мере прогресса: Ретро — на 5 уровне, Космос — на 10, Кэнди — на 15. Пиратская тема покупается за 500 монет, Огненная — за 10 побед в дуэлях, Ледяная — за 7-дневную серию.',
+  },
+  {
+    question: 'Безопасно ли приложение?',
+    answer: 'Да! КВИЗЛИК не собирает и не передаёт личные данные третьим лицам. Мы храним только твой никнейм из Telegram и игровой прогресс (очки, монеты, достижения) для работы таблицы лидеров. Никаких паролей, email или контактов мы не сохраняем.',
+  },
+  {
+    question: 'Пропадёт ли мой прогресс?',
+    answer: 'Твой прогресс сохраняется в облаке и привязан к твоему аккаунту Telegram. Даже если удалишь приложение и установишь заново — прогресс восстановится автоматически при входе через Telegram.',
+  },
+  {
+    question: 'Как связаться с разработчиком?',
+    answer: 'Нашли баг или есть предложение? Пишите @SergoDev в Telegram. Мы всегда рады обратной связи!',
+  },
+];
+
+export default function FaqScreen() {
+  const { setPhase } = useQuizStore();
+  const { haptic } = useTelegram();
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
+      <div className="flex items-center gap-3 mb-5">
+        <button
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
+        >
+          <ArrowLeft className="w-4 h-4 text-white/70" />
+        </button>
+        <h2 className="text-white font-bold text-lg">Информация и FAQ</h2>
+      </div>
+
+      <div className="flex flex-col gap-2.5 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 80px)' }}>
+        {FAQ_ITEMS.map((item, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.03 }}
+            className="bg-[var(--theme-card)] border border-white/10 rounded-2xl overflow-hidden"
+          >
+            <button
+              onClick={() => { haptic('light'); setOpenIndex(openIndex === i ? null : i); }}
+              className="w-full p-4 flex items-center gap-3 text-left"
+            >
+              <span className="text-white font-semibold text-sm flex-1">{item.question}</span>
+              <motion.span
+                animate={{ rotate: openIndex === i ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+                className="text-white/30"
+              >▼</motion.span>
+            </button>
+            <AnimatePresence>
+              {openIndex === i && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <p className="px-4 pb-4 text-white/60 text-sm leading-relaxed">{item.answer}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-white/5 text-center">
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v3.1 • made by @SergoDev</p>
+      </div>
+    </div>
+  );
+}
