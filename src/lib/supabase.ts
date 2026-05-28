@@ -62,22 +62,50 @@ export async function loadProfile(telegramId: number): Promise<ProfileRow | null
   return data as ProfileRow;
 }
 
-// Save profile to Supabase (upsert)
+// Save profile to Supabase (upsert) — resilient to missing columns
 export async function saveProfile(telegramId: number, profile: Partial<ProfileRow>): Promise<boolean> {
+  const row = {
+    telegram_id: telegramId,
+    ...profile,
+    updated_at: new Date().toISOString(),
+  };
+
   const { error } = await supabase
     .from('profiles')
-    .upsert(
-      {
-        telegram_id: telegramId,
-        ...profile,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'telegram_id' }
-    );
+    .upsert(row, { onConflict: 'telegram_id' });
 
   if (error) {
-    console.error('Failed to save profile:', error);
-    return false;
+    // If upsert fails (possibly due to missing new columns), try with core fields only
+    console.warn('Full profile upsert failed, trying core fields:', error.message);
+    const coreRow = {
+      telegram_id: telegramId,
+      player_name: profile.player_name,
+      avatar_id: profile.avatar_id,
+      total_score: profile.total_score,
+      total_xp: profile.total_xp,
+      level: profile.level,
+      coins: profile.coins,
+      games_played: profile.games_played,
+      total_correct: profile.total_correct,
+      total_questions: profile.total_questions,
+      best_streak: profile.best_streak,
+      current_league: profile.current_league,
+      daily_streak: profile.daily_streak,
+      last_daily_at: profile.last_daily_at,
+      unlocked_avatars: profile.unlocked_avatars,
+      unlocked_achievements: profile.unlocked_achievements,
+      power_ups: profile.power_ups,
+      seen_questions: profile.seen_questions,
+      categories_played: profile.categories_played,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: err2 } = await supabase
+      .from('profiles')
+      .upsert(coreRow, { onConflict: 'telegram_id' });
+    if (err2) {
+      console.error('Core profile upsert also failed:', err2);
+      return false;
+    }
   }
   return true;
 }
