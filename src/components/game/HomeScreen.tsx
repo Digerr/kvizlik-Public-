@@ -173,9 +173,10 @@ export default function HomeScreen() {
             haptic('medium');
             setPhase('duel');
           }}
-          className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-lg py-4 px-5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform"
+          className="relative bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-lg py-4 px-5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform"
         >
           ⚔️ Дуэль
+          <span className="absolute top-1.5 right-2 text-[8px] font-medium text-white/40 bg-white/10 px-1 py-0.5 rounded">Beta</span>
         </motion.button>
       </div>
 
@@ -265,6 +266,11 @@ export default function HomeScreen() {
           </span>
         </motion.div>
       )}
+
+      {/* Footer */}
+      <div className="mt-auto pt-6 text-center">
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v2.0 • made by @SergoDev</p>
+      </div>
     </div>
   );
 }

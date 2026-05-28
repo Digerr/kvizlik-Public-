@@ -42,6 +42,8 @@ export default function GameScreen() {
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scorePopup, setScorePopup] = useState<{ amount: number; id: number } | null>(null);
   const popupIdRef = useRef(0);
+  const [canExit, setCanExit] = useState(true);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const question = questions[currentQuestionIndex];
   const category = CATEGORIES.find(c => c.id === categoryId);
@@ -106,6 +108,15 @@ export default function GameScreen() {
       setTimeout(() => playStreak(), 300);
     }
   }, [currentStreak, isRevealed]);
+
+  // Exit button: only visible for first 5 seconds of each question
+  useEffect(() => {
+    if (isTimerRunning) {
+      setCanExit(true);
+      const exitTimer = setTimeout(() => setCanExit(false), 5000);
+      return () => clearTimeout(exitTimer);
+    }
+  }, [currentQuestionIndex, isTimerRunning]);
 
   // Auto reveal when selected
   useEffect(() => {
@@ -216,6 +227,17 @@ export default function GameScreen() {
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
+          {canExit && !isRevealed ? (
+            <button
+              onClick={() => setShowExitConfirm(true)}
+              className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all"
+              title="Выйти из игры"
+            >
+              <span className="text-white/40 text-sm">✕</span>
+            </button>
+          ) : (
+            <div className="w-8" />
+          )}
           <span className="text-lg">{category?.emoji || '🎲'}</span>
           <span className="text-white/70 text-sm font-medium">{category?.name || 'Микс'}</span>
           {aiMode && (
@@ -389,6 +411,48 @@ export default function GameScreen() {
             className="fixed top-1/3 left-1/2 -translate-x-1/2 text-2xl font-black text-green-400 pointer-events-none z-50"
           >
             +{scorePopup.amount}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Exit Confirm Modal */}
+      <AnimatePresence>
+        {showExitConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-6"
+            onClick={() => setShowExitConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#1a1235] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+            >
+              <p className="text-white font-bold text-lg text-center mb-2">Выйти из игры?</p>
+              <p className="text-white/50 text-sm text-center mb-5">Прогресс этой игры не сохранится</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowExitConfirm(false)}
+                  className="flex-1 bg-white/10 text-white font-medium py-3 rounded-2xl hover:bg-white/15 active:scale-[0.98] transition-all"
+                >
+                  Остаться
+                </button>
+                <button
+                  onClick={() => {
+                    setShowExitConfirm(false);
+                    useQuizStore.getState().playAgain();
+                    setPhase('home');
+                  }}
+                  className="flex-1 bg-red-500/80 text-white font-medium py-3 rounded-2xl hover:bg-red-500 active:scale-[0.98] transition-all"
+                >
+                  Выйти
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
