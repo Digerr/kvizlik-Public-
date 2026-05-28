@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { CATEGORIES } from '@/lib/quiz-data';
+import { CATEGORIES, type Question } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
+import { Loader2 } from 'lucide-react';
+import { playCorrect, playWrong, playTick, playStreak } from '@/lib/sounds';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
@@ -24,11 +26,15 @@ export default function GameScreen() {
     categoryId,
     timePerQuestion,
     powerUps,
+    aiMode,
+    isGeneratingQuestions,
     selectOption,
     revealAnswer,
     nextQuestion,
     tick,
     setPhase,
+    setIsGeneratingQuestions,
+    addQuestions,
   } = useQuizStore();
 
   const { haptic } = useTelegram();
@@ -39,6 +45,41 @@ export default function GameScreen() {
 
   const question = questions[currentQuestionIndex];
   const category = CATEGORIES.find(c => c.id === categoryId);
+
+  // Fetch AI questions
+  const fetchAiQuestions = useCallback(async () => {
+    setIsGeneratingQuestions(true);
+    try {
+      const response = await fetch('/api/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: categoryId || 'general',
+          difficulty: useQuizStore.getState().difficulty,
+          count: 10,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate');
+      }
+
+      const data = await response.json();
+      const newQuestions: Question[] = data.questions;
+
+      if (newQuestions && newQuestions.length > 0) {
+        addQuestions(newQuestions);
+      } else {
+        setIsGeneratingQuestions(false);
+        // If no questions generated, end game
+        useQuizStore.getState().endGame();
+      }
+    } catch {
+      setIsGeneratingQuestions(false);
+      // If generation fails, end game
+      useQuizStore.getState().endGame();
+    }
+  }, [categoryId, setIsGeneratingQuestions, addQuestions]);
 
   // Timer tick
   useEffect(() => {
@@ -52,6 +93,20 @@ export default function GameScreen() {
     };
   }, [isTimerRunning, tick]);
 
+  // Timer tick sound at 3 seconds
+  useEffect(() => {
+    if (isTimerRunning && timerRemaining === 3) {
+      playTick();
+    }
+  }, [timerRemaining, isTimerRunning]);
+
+  // Streak sound at milestones
+  useEffect(() => {
+    if (isRevealed && currentStreak > 0 && (currentStreak === 3 || currentStreak === 5 || currentStreak === 10)) {
+      setTimeout(() => playStreak(), 300);
+    }
+  }, [currentStreak, isRevealed]);
+
   // Auto reveal when selected
   useEffect(() => {
     if (selectedOption !== null && !isRevealed) {
@@ -64,17 +119,20 @@ export default function GameScreen() {
     };
   }, [selectedOption, isRevealed, revealAnswer]);
 
-  // Haptic on reveal
+  // Haptic on reveal + sounds
   useEffect(() => {
     if (isRevealed && question) {
       const isCorrect = selectedOption === question.correctIndex;
       haptic(isCorrect ? 'success' : 'error');
 
       if (isCorrect) {
+        playCorrect();
         popupIdRef.current += 1;
         const amount = 10 + (question.difficulty * 5);
         setScorePopup({ amount, id: popupIdRef.current });
         setTimeout(() => setScorePopup(null), 1200);
+      } else {
+        playWrong();
       }
     }
   }, [isRevealed]);
@@ -96,10 +154,22 @@ export default function GameScreen() {
 
   const handleNext = () => {
     haptic('light');
-    nextQuestion();
+    const state = useQuizStore.getState();
+    const nextIndex = state.currentQuestionIndex + 1;
+
+    if (nextIndex >= state.questions.length) {
+      // If AI mode is on, generate more questions instead of ending
+      if (state.aiMode) {
+        fetchAiQuestions();
+      } else {
+        nextQuestion();
+      }
+    } else {
+      nextQuestion();
+    }
   };
 
-  if (!question) {
+  if (!question && !isGeneratingQuestions) {
     return (
       <div className="min-h-[100dvh] bg-[#0f0a1e] flex items-center justify-center">
         <p className="text-white/50">Загрузка...</p>
@@ -111,6 +181,7 @@ export default function GameScreen() {
   const timerColor = timerRemaining <= 3 ? 'text-red-400' : timerRemaining <= 7 ? 'text-yellow-400' : 'text-white';
 
   const getOptionStyle = (index: number) => {
+    if (!question) return '';
     const isRemoved = fiftyFiftyRemoved.includes(index);
     const isCorrectOption = index === question.correctIndex;
     const isSelected = index === selectedOption;
@@ -147,6 +218,11 @@ export default function GameScreen() {
         <div className="flex items-center gap-2">
           <span className="text-lg">{category?.emoji || '🎲'}</span>
           <span className="text-white/70 text-sm font-medium">{category?.name || 'Микс'}</span>
+          {aiMode && (
+            <span className="bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+              AI
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -233,13 +309,13 @@ export default function GameScreen() {
       >
         <div className="bg-[#1a1235] border border-white/10 rounded-2xl p-5 mb-5">
           <p className="text-white text-lg font-semibold text-center leading-relaxed">
-            {question.question}
+            {question?.question || 'Загрузка вопроса...'}
           </p>
         </div>
 
         {/* Options */}
         <div className="flex flex-col gap-2.5 flex-1">
-          {question.options.map((option, index) => {
+          {(question?.options || []).map((option, index) => {
             const isRemoved = fiftyFiftyRemoved.includes(index);
             return (
               <motion.button
@@ -252,9 +328,9 @@ export default function GameScreen() {
                 className={`w-full p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all ${getOptionStyle(index)}`}
               >
                 <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                  isRevealed && index === question.correctIndex
+                  isRevealed && question && index === question.correctIndex
                     ? 'bg-green-500/30 text-green-300'
-                    : isRevealed && index === selectedOption && index !== question.correctIndex
+                    : isRevealed && index === selectedOption && question && index !== question.correctIndex
                     ? 'bg-red-500/30 text-red-300'
                     : selectedOption === index
                     ? 'bg-purple-500/30 text-purple-300'
@@ -270,7 +346,7 @@ export default function GameScreen() {
 
         {/* Fun Fact */}
         <AnimatePresence>
-          {isRevealed && question.funFact && (
+          {isRevealed && question?.funFact && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -313,6 +389,37 @@ export default function GameScreen() {
             className="fixed top-1/3 left-1/2 -translate-x-1/2 text-2xl font-black text-green-400 pointer-events-none z-50"
           >
             +{scorePopup.amount}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AI Generating Overlay */}
+      <AnimatePresence>
+        {isGeneratingQuestions && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#0f0a1e]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
+          >
+            <div className="bg-[#1a1235] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
+              <div className="relative">
+                <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
+                <span className="absolute inset-0 flex items-center justify-center text-xl">🤖</span>
+              </div>
+              <p className="text-white font-bold text-lg">Генерирую новые вопросы...</p>
+              <p className="text-white/40 text-xs text-center">Нейросеть готовит следующую порцию<br />уникальных вопросов для вас</p>
+              <div className="flex gap-1 mt-1">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-purple-400"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                  />
+                ))}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

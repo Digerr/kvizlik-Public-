@@ -4,7 +4,9 @@ import { motion } from 'framer-motion';
 import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
 import { LEAGUES, getLeagueByScore, getLeagueProgress, ACHIEVEMENTS } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
-import { Trophy, Home, RotateCcw, Share2 } from 'lucide-react';
+import { Trophy, Home, RotateCcw, Share2, Swords } from 'lucide-react';
+import { playWin, playCoin } from '@/lib/sounds';
+import { useEffect, useState, useCallback } from 'react';
 
 export default function ResultScreen() {
   const {
@@ -16,8 +18,11 @@ export default function ResultScreen() {
     totalXP,
     level,
     newAchievements,
+    duelMode,
     playAgain,
     setPhase,
+    finishDuelCreator,
+    finishDuelChallenger,
   } = useQuizStore();
 
   const { haptic, tg, isInTelegram } = useTelegram();
@@ -26,6 +31,30 @@ export default function ResultScreen() {
   const totalQuestions = questions.length;
   const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
   const isPerfect = correctCount === totalQuestions && totalQuestions > 0;
+
+  // Play win sound when score is good (>70%)
+  useEffect(() => {
+    if (accuracy >= 70) {
+      playWin();
+      if (accuracy === 100) {
+        setTimeout(() => playCoin(), 800);
+      }
+    }
+  }, []);
+
+  // For duel mode: handle game end differently
+  const [duelShareLink, setDuelShareLink] = useState<string | null>(null);
+
+  const handleDuelFinish = useCallback(() => {
+    if (duelMode && !useQuizStore.getState().duelData) {
+      // Creator mode - generate share link
+      const link = finishDuelCreator();
+      setDuelShareLink(link);
+    } else if (duelMode && useQuizStore.getState().duelData) {
+      // Challenger mode - show comparison
+      finishDuelChallenger();
+    }
+  }, [duelMode, finishDuelCreator, finishDuelChallenger]);
 
   // Score & coins calculation (mirroring endGame logic for display)
   const avgTime = answers.length > 0 ? answers.reduce((s, a) => s + a.timeSpent, 0) / answers.length : 0;
@@ -166,38 +195,107 @@ export default function ResultScreen() {
 
       {/* Action Buttons */}
       <div className="mt-auto flex flex-col gap-2.5">
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => { haptic('light'); playAgain(); }}
-          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-        >
-          <RotateCcw className="w-4 h-4" /> Играть снова
-        </motion.button>
+        {duelMode && !duelShareLink ? (
+          <>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { haptic('medium'); handleDuelFinish(); }}
+              className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+            >
+              <Swords className="w-4 h-4" /> Завершить дуэль
+            </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.55 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
+              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Home className="w-4 h-4" /> На главную
+            </motion.button>
+          </>
+        ) : duelShareLink ? (
+          <>
+            {/* Duel share link display */}
+            <div className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-2">
+              <p className="text-white/40 text-[10px] mb-2 uppercase tracking-wider">Ссылка для дуэли</p>
+              <p className="text-white/80 text-xs break-all leading-relaxed font-mono">
+                {duelShareLink}
+              </p>
+            </div>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => {
+                haptic('light');
+                const text = `⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠\n${duelShareLink}`;
+                if (isInTelegram && tg) {
+                  try {
+                    tg.openTelegramLink(
+                      `https://t.me/share/url?url=${encodeURIComponent(duelShareLink)}&text=${encodeURIComponent('⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠')}`
+                    );
+                  } catch {
+                    navigator.clipboard.writeText(text);
+                  }
+                } else {
+                  navigator.clipboard.writeText(text);
+                }
+              }}
+              className="w-full bg-[#2AABEE] hover:bg-[#229ED9] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#2AABEE]/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+            >
+              Поделиться в Telegram
+            </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
+              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Home className="w-4 h-4" /> На главную
+            </motion.button>
+          </>
+        ) : (
+          <>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { haptic('light'); playAgain(); }}
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" /> Играть снова
+            </motion.button>
 
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={handleShare}
-          className="w-full bg-[#1a1235] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-        >
-          <Share2 className="w-4 h-4" /> Поделиться
-        </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.55 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleShare}
+              className="w-full bg-[#1a1235] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Share2 className="w-4 h-4" /> Поделиться
+            </motion.button>
 
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => { haptic('light'); setPhase('home'); }}
-          className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-        >
-          <Home className="w-4 h-4" /> На главную
-        </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
+              className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Home className="w-4 h-4" /> На главную
+            </motion.button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { CATEGORIES, getQuestionsForCategory, getMixedQuestions, getQuestionsByDifficulty } from '@/lib/quiz-data';
+import { CATEGORIES, getQuestionsForCategory, getMixedQuestions, getQuestionsByDifficulty, type Question } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 const DIFFICULTY_OPTIONS = [
   { value: 1 as const, label: 'Легко', emoji: '🟢' },
@@ -13,32 +15,69 @@ const DIFFICULTY_OPTIONS = [
 ];
 
 export default function CategoryScreen() {
-  const { difficulty, setDifficulty, startGame, seenQuestions, setPhase } = useQuizStore();
+  const { difficulty, setDifficulty, startGame, seenQuestions, setPhase, aiMode, setAiMode } = useQuizStore();
   const { haptic } = useTelegram();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleCategorySelect = (categoryId: string | null) => {
+  const fetchAiQuestions = async (categoryId: string | null, diff: number, count: number): Promise<Question[]> => {
+    const response = await fetch('/api/generate-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: categoryId || 'general',
+        difficulty: diff,
+        count,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Ошибка генерации вопросов');
+    }
+
+    const data = await response.json();
+    return data.questions;
+  };
+
+  const handleCategorySelect = async (categoryId: string | null) => {
     haptic('light');
-    const questions = getQuestionsByDifficulty(categoryId, difficulty, 10, seenQuestions);
-    if (questions.length === 0) {
-      // fallback
-      const fallback = categoryId
-        ? getQuestionsForCategory(categoryId, 10, seenQuestions)
-        : getMixedQuestions(10, seenQuestions);
-      startGame(categoryId, fallback);
+    setError(null);
+
+    if (aiMode) {
+      setIsLoading(true);
+      try {
+        const aiQuestions = await fetchAiQuestions(categoryId, difficulty, 10);
+        startGame(categoryId, aiQuestions, true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ошибка при генерации вопросов');
+        // Fallback to local questions
+        const questions = getQuestionsByDifficulty(categoryId, difficulty, 10, seenQuestions);
+        if (questions.length === 0) {
+          const fallback = categoryId
+            ? getQuestionsForCategory(categoryId, 10, seenQuestions)
+            : getMixedQuestions(10, seenQuestions);
+          startGame(categoryId, fallback, false);
+        } else {
+          startGame(categoryId, questions, false);
+        }
+      } finally {
+        setIsLoading(false);
+      }
     } else {
-      startGame(categoryId, questions);
+      const questions = getQuestionsByDifficulty(categoryId, difficulty, 10, seenQuestions);
+      if (questions.length === 0) {
+        const fallback = categoryId
+          ? getQuestionsForCategory(categoryId, 10, seenQuestions)
+          : getMixedQuestions(10, seenQuestions);
+        startGame(categoryId, fallback, false);
+      } else {
+        startGame(categoryId, questions, false);
+      }
     }
   };
 
-  const handleMixed = () => {
-    haptic('light');
-    const questions = getQuestionsByDifficulty(null, difficulty, 10, seenQuestions);
-    if (questions.length === 0) {
-      startGame(null, getMixedQuestions(10, seenQuestions));
-    } else {
-      startGame(null, questions);
-    }
-  };
+  const handleMixed = () => handleCategorySelect(null);
 
   return (
     <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-4 flex flex-col">
@@ -54,7 +93,7 @@ export default function CategoryScreen() {
       </div>
 
       {/* Difficulty Selector */}
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-4">
         {DIFFICULTY_OPTIONS.map(opt => (
           <button
             key={opt.value}
@@ -70,13 +109,53 @@ export default function CategoryScreen() {
         ))}
       </div>
 
+      {/* AI Mode Toggle */}
+      <div className="bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 rounded-2xl p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🤖</span>
+            <div>
+              <p className="text-white font-semibold text-sm">Бесконечный режим (AI)</p>
+              <p className="text-white/40 text-xs">Вопросы генерирует нейросеть</p>
+            </div>
+          </div>
+          <Switch
+            checked={aiMode}
+            onCheckedChange={(checked) => {
+              haptic('light');
+              setAiMode(checked);
+            }}
+            className="data-[state=checked]:bg-purple-600 data-[state=unchecked]:bg-white/10"
+          />
+        </div>
+        {aiMode && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="mt-2"
+          >
+            <p className="text-purple-300/70 text-[11px] leading-relaxed">
+              ✨ AI будет создавать уникальные вопросы. Когда вопросы закончатся, нейросеть сгенерирует новые — играй бесконечно!
+            </p>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-3">
+          <p className="text-red-300 text-xs">⚠️ {error}. Используются стандартные вопросы.</p>
+        </div>
+      )}
+
       {/* Mixed Category */}
       <motion.button
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         whileTap={{ scale: 0.97 }}
         onClick={handleMixed}
-        className="w-full bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30 rounded-2xl p-4 mb-4 flex items-center gap-3 hover:from-purple-600/40 hover:to-blue-600/40 active:scale-[0.98] transition-all"
+        disabled={isLoading}
+        className="w-full bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30 rounded-2xl p-4 mb-4 flex items-center gap-3 hover:from-purple-600/40 hover:to-blue-600/40 active:scale-[0.98] transition-all disabled:opacity-50"
       >
         <span className="text-3xl">🎲</span>
         <div className="text-left">
@@ -86,7 +165,7 @@ export default function CategoryScreen() {
       </motion.button>
 
       {/* Category Grid */}
-      <div className="grid grid-cols-2 gap-3 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
+      <div className="grid grid-cols-2 gap-3 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 340px)' }}>
         {CATEGORIES.map((cat, i) => (
           <motion.button
             key={cat.id}
@@ -95,7 +174,8 @@ export default function CategoryScreen() {
             transition={{ delay: i * 0.04 }}
             whileTap={{ scale: 0.97 }}
             onClick={() => handleCategorySelect(cat.id)}
-            className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 flex flex-col items-start gap-2 hover:bg-[#221a45] active:scale-[0.98] transition-all text-left"
+            disabled={isLoading}
+            className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 flex flex-col items-start gap-2 hover:bg-[#221a45] active:scale-[0.98] transition-all text-left disabled:opacity-50"
           >
             <span className="text-2xl">{cat.emoji}</span>
             <p className="text-white font-semibold text-sm leading-tight">{cat.name}</p>
@@ -103,6 +183,24 @@ export default function CategoryScreen() {
           </motion.button>
         ))}
       </div>
+
+      {/* Loading Overlay */}
+      {isLoading && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-[#0f0a1e]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50"
+        >
+          <div className="bg-[#1a1235] border border-purple-500/30 rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl shadow-purple-600/10">
+            <div className="relative">
+              <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
+              <span className="absolute inset-0 flex items-center justify-center text-xl">🤖</span>
+            </div>
+            <p className="text-white font-bold text-lg">Генерирую вопросы...</p>
+            <p className="text-white/40 text-xs text-center">Нейросеть создаёт уникальные вопросы<br />для вашей квиз-игры</p>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

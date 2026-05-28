@@ -14,6 +14,7 @@ interface TelegramWebApp {
   ready: () => void;
   close: () => void;
   expand: () => void;
+  openTelegramLink: (url: string) => void;
   MainButton: {
     text: string;
     show: () => void;

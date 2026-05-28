@@ -20,7 +20,22 @@ export type QuizPhase =
   | "profile"
   | "achievements"
   | "shop"
-  | "daily";
+  | "daily"
+  | "duel"
+  | "duel_result";
+
+export interface DuelData {
+  questions: string[];
+  creatorScore: number;
+  creatorName: string;
+}
+
+export interface DuelResult {
+  myScore: number;
+  opponentScore: number;
+  opponentName: string;
+  won: boolean;
+}
 
 export interface AnswerRecord {
   questionId: string;
@@ -103,8 +118,17 @@ export interface QuizState {
   isHintActive: boolean;
   freezeTimeRemaining: number;
 
+  // AI mode
+  aiMode: boolean;
+  isGeneratingQuestions: boolean;
+
   // New achievement notifications
   newAchievements: string[];
+
+  // Duel mode
+  duelMode: boolean;
+  duelData: DuelData | null;
+  duelResult: DuelResult | null;
 
   // Actions
   setPhase: (phase: QuizPhase) => void;
@@ -112,13 +136,16 @@ export interface QuizState {
   setTelegramId: (id: string | null) => void;
   setAvatar: (avatarId: string) => void;
   setDifficulty: (d: 1 | 2 | 3) => void;
-  startGame: (categoryId: string | null, questions: Question[]) => void;
+  startGame: (categoryId: string | null, questions: Question[], aiMode?: boolean) => void;
   selectOption: (optionIndex: number) => void;
   revealAnswer: () => void;
   nextQuestion: () => void;
   tick: () => void;
   endGame: () => void;
   playAgain: () => void;
+  setAiMode: (enabled: boolean) => void;
+  setIsGeneratingQuestions: (generating: boolean) => void;
+  addQuestions: (newQuestions: Question[]) => void;
 
   // Power-ups
   usePowerUp: (id: string) => void;
@@ -137,6 +164,12 @@ export interface QuizState {
 
   // Leaderboard
   leaderboard: { name: string; score: number; avatarId: string; league: string }[];
+
+  // Duel actions
+  startDuel: (questions: Question[]) => void;
+  joinDuel: (duelData: DuelData, questions: Question[]) => void;
+  finishDuelCreator: () => string; // returns share link
+  finishDuelChallenger: () => void;
 
   resetAll: () => void;
 }
@@ -207,7 +240,12 @@ const INITIAL_STATE = {
   fiftyFiftyRemoved: [] as number[],
   isHintActive: false,
   freezeTimeRemaining: 0,
+  aiMode: false,
+  isGeneratingQuestions: false,
   newAchievements: [] as string[],
+  duelMode: false,
+  duelData: null as DuelData | null,
+  duelResult: null as DuelResult | null,
   leaderboard: [
     { name: "КвизМастер", score: 850, avatarId: "crown", league: "diamond" },
     { name: "Эрудит2024", score: 520, avatarId: "wizard", league: "platinum" },
@@ -230,7 +268,7 @@ export const useQuizStore = create<QuizState>()(
       setAvatar: (avatarId) => set({ avatarId }),
       setDifficulty: (d) => set({ difficulty: d }),
 
-      startGame: (categoryId, questions) => {
+      startGame: (categoryId, questions, aiMode = false) => {
         const state = get();
         set({
           phase: "game",
@@ -248,6 +286,8 @@ export const useQuizStore = create<QuizState>()(
           isHintActive: false,
           freezeTimeRemaining: 0,
           activePowerUp: null,
+          aiMode,
+          isGeneratingQuestions: false,
         });
       },
 
@@ -358,6 +398,13 @@ export const useQuizStore = create<QuizState>()(
 
       endGame: () => {
         const state = get();
+
+        // In duel mode, just transition to result screen — stats will be updated by duel-specific functions
+        if (state.duelMode) {
+          set({ phase: "result" });
+          return;
+        }
+
         const correctCount = state.answers.filter((a) => a.isCorrect).length;
         const totalQuestions = state.questions.length;
         const avgTime =
@@ -432,6 +479,22 @@ export const useQuizStore = create<QuizState>()(
           isHintActive: false,
           freezeTimeRemaining: 0,
           activePowerUp: null,
+          aiMode: false,
+          isGeneratingQuestions: false,
+          duelMode: false,
+          duelData: null,
+          duelResult: null,
+        });
+      },
+
+      setAiMode: (enabled) => set({ aiMode: enabled }),
+      setIsGeneratingQuestions: (generating) => set({ isGeneratingQuestions: generating }),
+
+      addQuestions: (newQuestions) => {
+        const state = get();
+        set({
+          questions: [...state.questions, ...newQuestions],
+          isGeneratingQuestions: false,
         });
       },
 
@@ -598,6 +661,147 @@ export const useQuizStore = create<QuizState>()(
             coins: state.coins + totalReward,
           });
         }
+      },
+
+      startDuel: (questions) => {
+        set({
+          phase: 'game',
+          duelMode: true,
+          categoryId: null,
+          questions,
+          currentQuestionIndex: 0,
+          answers: [],
+          timerRemaining: 15,
+          selectedOption: null,
+          isRevealed: false,
+          isTimerRunning: true,
+          currentStreak: 0,
+          isFiftyFiftyActive: false,
+          fiftyFiftyRemoved: [],
+          isHintActive: false,
+          freezeTimeRemaining: 0,
+          activePowerUp: null,
+        });
+      },
+
+      joinDuel: (duelData, questions) => {
+        set({
+          phase: 'game',
+          duelMode: true,
+          duelData,
+          categoryId: null,
+          questions,
+          currentQuestionIndex: 0,
+          answers: [],
+          timerRemaining: 15,
+          selectedOption: null,
+          isRevealed: false,
+          isTimerRunning: true,
+          currentStreak: 0,
+          isFiftyFiftyActive: false,
+          fiftyFiftyRemoved: [],
+          isHintActive: false,
+          freezeTimeRemaining: 0,
+          activePowerUp: null,
+        });
+      },
+
+      finishDuelCreator: () => {
+        const state = get();
+        const correctCount = state.answers.filter((a) => a.isCorrect).length;
+        const questionIds = state.questions.map((q) => q.id);
+        const creatorName = state.playerName || 'Игрок';
+
+        const duelData: DuelData = {
+          questions: questionIds,
+          creatorScore: correctCount,
+          creatorName,
+        };
+
+        const encoded = btoa(encodeURIComponent(JSON.stringify(duelData)));
+        const shareLink = `https://kvizlik-public-nscc6t081-sergo-s-projects1.vercel.app/?duel=${encoded}`;
+
+        // Update score and stats
+        const roundScore = correctCount * 10;
+        const coinsEarned = Math.ceil(roundScore / 2);
+        const newTotalScore = state.totalScore + roundScore;
+        const newLeague = getLeagueByScore(newTotalScore);
+        const today = getToday();
+        let newDailyStreak = state.dailyStreak;
+        if (state.lastDailyAt !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().slice(0, 10);
+          newDailyStreak = state.lastDailyAt === yesterdayStr
+            ? state.dailyStreak + 1
+            : 1;
+        }
+
+        set({
+          duelMode: true,
+          duelData,
+          phase: 'result',
+          totalScore: newTotalScore,
+          gamesPlayed: state.gamesPlayed + 1,
+          totalCorrect: state.totalCorrect + correctCount,
+          totalQuestions: state.totalQuestions + state.questions.length,
+          coins: state.coins + coinsEarned,
+          currentLeague: newLeague.id,
+          dailyStreak: newDailyStreak,
+          lastDailyAt: today,
+        });
+
+        get().updateDailyProgress('games', 1);
+        get().updateDailyProgress('correct', correctCount);
+        get().checkAchievements();
+
+        return shareLink;
+      },
+
+      finishDuelChallenger: () => {
+        const state = get();
+        const correctCount = state.answers.filter((a) => a.isCorrect).length;
+        const opponentScore = state.duelData?.creatorScore ?? 0;
+        const opponentName = state.duelData?.creatorName ?? 'Соперник';
+        const won = correctCount > opponentScore;
+
+        const roundScore = correctCount * 10;
+        const bonusCoins = won ? 20 : 0;
+        const coinsEarned = Math.ceil(roundScore / 2) + bonusCoins;
+        const newTotalScore = state.totalScore + roundScore;
+        const newLeague = getLeagueByScore(newTotalScore);
+        const today = getToday();
+        let newDailyStreak = state.dailyStreak;
+        if (state.lastDailyAt !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().slice(0, 10);
+          newDailyStreak = state.lastDailyAt === yesterdayStr
+            ? state.dailyStreak + 1
+            : 1;
+        }
+
+        set({
+          duelResult: {
+            myScore: correctCount,
+            opponentScore,
+            opponentName,
+            won,
+          },
+          phase: 'duel_result',
+          totalScore: newTotalScore,
+          gamesPlayed: state.gamesPlayed + 1,
+          totalCorrect: state.totalCorrect + correctCount,
+          totalQuestions: state.totalQuestions + state.questions.length,
+          coins: state.coins + coinsEarned,
+          currentLeague: newLeague.id,
+          dailyStreak: newDailyStreak,
+          lastDailyAt: today,
+        });
+
+        get().updateDailyProgress('games', 1);
+        get().updateDailyProgress('correct', correctCount);
+        get().checkAchievements();
       },
 
       resetAll: () => set(INITIAL_STATE),

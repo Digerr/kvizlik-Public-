@@ -5,7 +5,8 @@ import { useQuizStore } from '@/lib/quiz-store';
 import { AVATARS, LEAGUES, ACHIEVEMENTS } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
 import { useEffect, useState } from 'react';
-import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight } from 'lucide-react';
+import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight, Volume2, VolumeX, Swords } from 'lucide-react';
+import { isMuted, toggleMute } from '@/lib/sounds';
 
 export default function HomeScreen() {
   const {
@@ -25,6 +26,7 @@ export default function HomeScreen() {
 
   const { haptic, user } = useTelegram();
   const [showAchievement, setShowAchievement] = useState<string | null>(null);
+  const [muted, setMuted] = useState(isMuted());
 
   useEffect(() => {
     refreshDailyTasks();
@@ -77,20 +79,39 @@ export default function HomeScreen() {
         })()}
       </AnimatePresence>
 
-      {/* Logo */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-6"
-      >
-        <h1 className="text-4xl font-black tracking-tight">
-          <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-            КВИЗЛИК
-          </span>
-          <span className="ml-2">🧠</span>
-        </h1>
-        <p className="text-white/40 text-xs mt-1">Проверь свои знания!</p>
-      </motion.div>
+      {/* Logo + Sound Toggle */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex-1" />
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center flex-1"
+        >
+          <h1 className="text-4xl font-black tracking-tight">
+            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+              КВИЗЛИК
+            </span>
+            <span className="ml-2">🧠</span>
+          </h1>
+          <p className="text-white/40 text-xs mt-1">Проверь свои знания!</p>
+        </motion.div>
+        <div className="flex-1 flex justify-end">
+          <button
+            onClick={() => {
+              const nowMuted = toggleMute();
+              setMuted(nowMuted);
+              haptic('light');
+            }}
+            className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
+            title={muted ? 'Включить звук' : 'Выключить звук'}
+          >
+            {muted
+              ? <VolumeX className="w-4 h-4 text-white/40" />
+              : <Volume2 className="w-4 h-4 text-white/70" />
+            }
+          </button>
+        </div>
+      </div>
 
       {/* Player Card */}
       <motion.div
@@ -128,20 +149,35 @@ export default function HomeScreen() {
         </div>
       </motion.div>
 
-      {/* Play Button */}
-      <motion.button
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={() => {
-          haptic('light');
-          setPhase('category');
-        }}
-        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-2xl mb-4 shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform"
-      >
-        🎮 Играть
-      </motion.button>
+      {/* Play Button + Duel Button */}
+      <div className="flex gap-3 mb-4">
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => {
+            haptic('light');
+            setPhase('category');
+          }}
+          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform"
+        >
+          🎮 Играть
+        </motion.button>
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => {
+            haptic('medium');
+            setPhase('duel');
+          }}
+          className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-lg py-4 px-5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform"
+        >
+          ⚔️ Дуэль
+        </motion.button>
+      </div>
 
       {/* Menu Buttons */}
       <motion.div
