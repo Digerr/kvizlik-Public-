@@ -46,26 +46,33 @@ function useDuelUrlHandler() {
           creatorName: decoded.creatorName,
         };
 
-        // Get questions by IDs
         const questions = getQuestionsByIds(duelData.questions);
 
         if (questions.length > 0) {
           joinDuel(duelData, questions);
         } else {
-          // Fallback: generate random questions if IDs don't match
           const fallbackQuestions = getMixedQuestions(10, []);
           joinDuel(duelData, fallbackQuestions);
         }
 
-        // Clean URL without reloading
         const cleanUrl = window.location.origin + window.location.pathname;
         window.history.replaceState({}, '', cleanUrl);
       } catch {
-        // Invalid duel data, ignore
         console.error('Invalid duel parameter');
       }
     }
   }, [joinDuel, setPhase]);
+}
+
+function useCloudSync() {
+  const { telegramId, syncFromCloud, isCloudLoaded } = useQuizStore();
+
+  useEffect(() => {
+    // Wait for telegramId to be set, then sync from cloud
+    if (telegramId && !isCloudLoaded) {
+      syncFromCloud();
+    }
+  }, [telegramId, isCloudLoaded, syncFromCloud]);
 }
 
 export default function Home() {
@@ -73,6 +80,7 @@ export default function Home() {
   const Component = phaseComponents[phase] || HomeScreen;
 
   useDuelUrlHandler();
+  useCloudSync();
 
   return (
     <main className="min-h-[100dvh] bg-[#0f0a1e] overflow-hidden">

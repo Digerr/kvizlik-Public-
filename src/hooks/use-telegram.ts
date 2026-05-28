@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuizStore } from "@/lib/quiz-store";
 
 interface TelegramUser {
   id: number;
@@ -53,6 +54,7 @@ export function useTelegram() {
   const [tg, setTg] = useState<TelegramWebApp | null>(null);
   const [user, setUser] = useState<TelegramUser | null>(null);
   const [isInTelegram, setIsInTelegram] = useState(false);
+  const { setTelegramId, setPlayerName, playerName } = useQuizStore();
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.Telegram?.WebApp) {
@@ -67,7 +69,17 @@ export function useTelegram() {
         setTg(webApp);
         setIsInTelegram(true);
         if (webApp.initDataUnsafe?.user) {
-          setUser(webApp.initDataUnsafe.user);
+          const tgUser = webApp.initDataUnsafe.user;
+          setUser(tgUser);
+
+          // Save Telegram ID to store (triggers cloud sync via page.tsx)
+          const tid = String(tgUser.id);
+          setTelegramId(tid);
+
+          // Auto-set player name from Telegram if not set
+          if (!playerName && tgUser.first_name) {
+            setPlayerName(tgUser.first_name);
+          }
         }
       }, 0);
 

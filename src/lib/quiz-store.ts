@@ -10,6 +10,13 @@ import {
   AVATARS,
   DAILY_TASKS_TEMPLATE,
 } from "./quiz-data";
+import {
+  loadProfile,
+  saveProfile,
+  updateLeaderboard,
+  getLeaderboard as getCloudLeaderboard,
+  type LeaderboardRow,
+} from "./supabase";
 
 export type QuizPhase =
   | "home"
@@ -68,6 +75,15 @@ export interface UnlockedAchievement {
   unlockedAt: number;
 }
 
+export interface LeaderboardEntry {
+  name: string;
+  score: number;
+  avatarId: string;
+  league: string;
+  isPlayer?: boolean;
+  telegramId?: number;
+}
+
 export interface QuizState {
   phase: QuizPhase;
 
@@ -92,7 +108,7 @@ export interface QuizState {
 
   // Power-ups
   powerUps: PowerUpState;
-  activePowerUp: string | null; // currently active power-up during game
+  activePowerUp: string | null;
 
   // Unlocks
   unlockedAvatars: string[];
@@ -130,6 +146,14 @@ export interface QuizState {
   duelData: DuelData | null;
   duelResult: DuelResult | null;
 
+  // Cloud sync
+  isCloudLoaded: boolean;
+  isCloudSyncing: boolean;
+  lastCloudSync: number;
+
+  // Leaderboard (real from cloud)
+  leaderboard: LeaderboardEntry[];
+
   // Actions
   setPhase: (phase: QuizPhase) => void;
   setPlayerName: (name: string) => void;
@@ -162,13 +186,15 @@ export interface QuizState {
   // Achievements check
   checkAchievements: () => void;
 
-  // Leaderboard
-  leaderboard: { name: string; score: number; avatarId: string; league: string }[];
+  // Cloud sync actions
+  syncToCloud: () => Promise<void>;
+  syncFromCloud: () => Promise<void>;
+  fetchLeaderboard: () => Promise<void>;
 
   // Duel actions
   startDuel: (questions: Question[]) => void;
   joinDuel: (duelData: DuelData, questions: Question[]) => void;
-  finishDuelCreator: () => string; // returns share link
+  finishDuelCreator: () => string;
   finishDuelChallenger: () => void;
 
   resetAll: () => void;
@@ -246,14 +272,10 @@ const INITIAL_STATE = {
   duelMode: false,
   duelData: null as DuelData | null,
   duelResult: null as DuelResult | null,
-  leaderboard: [
-    { name: "КвизМастер", score: 850, avatarId: "crown", league: "diamond" },
-    { name: "Эрудит2024", score: 520, avatarId: "wizard", league: "platinum" },
-    { name: "Знаток", score: 310, avatarId: "dragon", league: "gold" },
-    { name: "Умник", score: 180, avatarId: "cat", league: "gold" },
-    { name: "Любитель", score: 95, avatarId: "owl", league: "silver" },
-    { name: "Новичок", score: 25, avatarId: "default", league: "bronze" },
-  ] as { name: string; score: number; avatarId: string; league: string }[],
+  isCloudLoaded: false,
+  isCloudSyncing: false,
+  lastCloudSync: 0,
+  leaderboard: [] as LeaderboardEntry[],
 };
 
 export const useQuizStore = create<QuizState>()(
@@ -268,8 +290,133 @@ export const useQuizStore = create<QuizState>()(
       setAvatar: (avatarId) => set({ avatarId }),
       setDifficulty: (d) => set({ difficulty: d }),
 
-      startGame: (categoryId, questions, aiMode = false) => {
+      // ===== CLOUD SYNC =====
+
+      syncFromCloud: async () => {
         const state = get();
+        const tid = state.telegramId;
+        if (!tid) return;
+
+        set({ isCloudSyncing: true });
+        try {
+          const profile = await loadProfile(Number(tid));
+          if (profile) {
+            // Cloud data is source of truth — merge with local (take the higher values)
+            const localState = {
+              totalScore: state.totalScore,
+              totalXP: state.totalXP,
+              gamesPlayed: state.gamesPlayed,
+              totalCorrect: state.totalCorrect,
+              totalQuestions: state.totalQuestions,
+              bestStreak: state.bestStreak,
+              coins: state.coins,
+              level: state.level,
+              dailyStreak: state.dailyStreak,
+            };
+
+            // Take the max between local and cloud (local might have newer data if cloud failed before)
+            const merged = {
+              playerName: profile.player_name || state.playerName,
+              avatarId: profile.avatar_id || state.avatarId,
+              totalScore: Math.max(profile.total_score, localState.totalScore),
+              totalXP: Math.max(profile.total_xp, localState.totalXP),
+              gamesPlayed: Math.max(profile.games_played, localState.gamesPlayed),
+              totalCorrect: Math.max(profile.total_correct, localState.totalCorrect),
+              totalQuestions: Math.max(profile.total_questions, localState.totalQuestions),
+              bestStreak: Math.max(profile.best_streak, localState.bestStreak),
+              coins: Math.max(profile.coins, localState.coins),
+              level: Math.max(profile.level, localState.level),
+              currentLeague: profile.current_league || state.currentLeague,
+              dailyStreak: Math.max(profile.daily_streak, localState.dailyStreak),
+              lastDailyAt: profile.last_daily_at || state.lastDailyAt,
+              unlockedAvatars: profile.unlocked_avatars?.length > 1 ? profile.unlocked_avatars : state.unlockedAvatars,
+              unlockedAchievements: profile.unlocked_achievements?.length > 0 ? profile.unlocked_achievements : state.unlockedAchievements,
+              powerUps: profile.power_ups || state.powerUps,
+              seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
+              categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
+            };
+
+            set({
+              ...merged,
+              isCloudLoaded: true,
+              isCloudSyncing: false,
+            });
+          } else {
+            // No cloud profile yet — this is first time, upload local data
+            set({ isCloudLoaded: true, isCloudSyncing: false });
+            await get().syncToCloud();
+          }
+        } catch (e) {
+          console.error('Failed to sync from cloud:', e);
+          set({ isCloudSyncing: false, isCloudLoaded: true });
+        }
+      },
+
+      syncToCloud: async () => {
+        const state = get();
+        const tid = state.telegramId;
+        if (!tid) return;
+
+        // Don't sync too often (at least 2 seconds between syncs)
+        const now = Date.now();
+        if (now - state.lastCloudSync < 2000) return;
+
+        set({ isCloudSyncing: true, lastCloudSync: now });
+        try {
+          await saveProfile(Number(tid), {
+            player_name: state.playerName || 'Игрок',
+            avatar_id: state.avatarId,
+            total_score: state.totalScore,
+            total_xp: state.totalXP,
+            level: state.level,
+            coins: state.coins,
+            games_played: state.gamesPlayed,
+            total_correct: state.totalCorrect,
+            total_questions: state.totalQuestions,
+            best_streak: state.bestStreak,
+            current_league: state.currentLeague,
+            daily_streak: state.dailyStreak,
+            last_daily_at: state.lastDailyAt,
+            unlocked_avatars: state.unlockedAvatars,
+            unlocked_achievements: state.unlockedAchievements as any,
+            power_ups: state.powerUps,
+            seen_questions: state.seenQuestions,
+            categories_played: state.categoriesPlayed,
+          });
+
+          // Also update leaderboard
+          await updateLeaderboard(
+            Number(tid),
+            state.playerName || 'Игрок',
+            state.avatarId,
+            state.totalScore,
+            state.currentLeague,
+          );
+        } catch (e) {
+          console.error('Failed to sync to cloud:', e);
+        }
+        set({ isCloudSyncing: false });
+      },
+
+      fetchLeaderboard: async () => {
+        try {
+          const rows = await getCloudLeaderboard(50);
+          const entries: LeaderboardEntry[] = rows.map((row) => ({
+            name: row.player_name,
+            score: row.score,
+            avatarId: row.avatar_id,
+            league: row.league,
+            telegramId: row.telegram_id,
+          }));
+          set({ leaderboard: entries });
+        } catch (e) {
+          console.error('Failed to fetch leaderboard:', e);
+        }
+      },
+
+      // ===== GAME ACTIONS =====
+
+      startGame: (categoryId, questions, aiMode = false) => {
         set({
           phase: "game",
           categoryId,
@@ -318,11 +465,10 @@ export const useQuizStore = create<QuizState>()(
         const newBestStreak = Math.max(state.bestStreak, newStreak);
         const newSeenQuestions = [...new Set([...state.seenQuestions, question.id])];
 
-        // XP calculation
         let xpGain = 0;
         if (isCorrect) {
           xpGain = 10 + (question.difficulty * 5);
-          if (timeSpent < 3) xpGain += 5; // speed bonus
+          if (timeSpent < 3) xpGain += 5;
         }
 
         set({
@@ -368,7 +514,6 @@ export const useQuizStore = create<QuizState>()(
         const state = get();
         if (!state.isTimerRunning) return;
 
-        // If freeze is active, don't decrement timer
         if (state.freezeTimeRemaining > 0) {
           set({ freezeTimeRemaining: state.freezeTimeRemaining - 1 });
           return;
@@ -399,7 +544,6 @@ export const useQuizStore = create<QuizState>()(
       endGame: () => {
         const state = get();
 
-        // In duel mode, just transition to result screen — stats will be updated by duel-specific functions
         if (state.duelMode) {
           set({ phase: "result" });
           return;
@@ -411,14 +555,12 @@ export const useQuizStore = create<QuizState>()(
           state.answers.reduce((sum, a) => sum + a.timeSpent, 0) /
           (state.answers.length || 1);
 
-        // Score calculation with streak multiplier
         let roundScore = correctCount * 10;
         if (avgTime < 5) roundScore += 5;
         if (state.bestStreak >= 5) roundScore += 10;
         if (state.bestStreak >= 10) roundScore += 20;
-        if (correctCount === totalQuestions) roundScore += 25; // perfect game bonus
+        if (correctCount === totalQuestions) roundScore += 25;
 
-        // Coins (1 coin per 2 score, rounded)
         const coinsEarned = Math.ceil(roundScore / 2);
 
         const newTotalScore = state.totalScore + roundScore;
@@ -427,7 +569,6 @@ export const useQuizStore = create<QuizState>()(
           ? [...new Set([...state.categoriesPlayed, state.categoryId])]
           : state.categoriesPlayed;
 
-        // Update daily streak
         const today = getToday();
         let newDailyStreak = state.dailyStreak;
         if (state.lastDailyAt !== today) {
@@ -452,14 +593,15 @@ export const useQuizStore = create<QuizState>()(
           lastDailyAt: today,
         });
 
-        // Update daily tasks
         get().updateDailyProgress("games", 1);
         get().updateDailyProgress("correct", correctCount);
         if (state.bestStreak >= 3) get().updateDailyProgress("streak", 1);
         if (state.categoryId) get().updateDailyProgress("category", 1);
 
-        // Check achievements
         get().checkAchievements();
+
+        // Sync to cloud after game ends
+        get().syncToCloud();
       },
 
       playAgain: () => {
@@ -523,7 +665,6 @@ export const useQuizStore = create<QuizState>()(
           const removed = shuffled.slice(0, 2);
           newState.isFiftyFiftyActive = true;
           newState.fiftyFiftyRemoved = removed;
-          // If selected option was removed, deselect
           if (
             state.selectedOption !== null &&
             removed.includes(state.selectedOption)
@@ -550,6 +691,8 @@ export const useQuizStore = create<QuizState>()(
             [key]: (state.powerUps[key] || 0) + 1,
           },
         });
+        // Sync to cloud after purchase
+        get().syncToCloud();
         return true;
       },
 
@@ -564,6 +707,8 @@ export const useQuizStore = create<QuizState>()(
           unlockedAvatars: [...state.unlockedAvatars, id],
           avatarId: id,
         });
+        // Sync to cloud after purchase
+        get().syncToCloud();
         return true;
       },
 
@@ -599,6 +744,7 @@ export const useQuizStore = create<QuizState>()(
           dailyTasks: updated,
           coins: state.coins + task.reward,
         });
+        get().syncToCloud();
       },
 
       checkAchievements: () => {
@@ -719,9 +865,8 @@ export const useQuizStore = create<QuizState>()(
         };
 
         const encoded = btoa(encodeURIComponent(JSON.stringify(duelData)));
-        const shareLink = `https://kvizlik-public-nscc6t081-sergo-s-projects1.vercel.app/?duel=${encoded}`;
+        const shareLink = `https://kvizlik-public.vercel.app/?duel=${encoded}`;
 
-        // Update score and stats
         const roundScore = correctCount * 10;
         const coinsEarned = Math.ceil(roundScore / 2);
         const newTotalScore = state.totalScore + roundScore;
@@ -754,6 +899,7 @@ export const useQuizStore = create<QuizState>()(
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
         get().checkAchievements();
+        get().syncToCloud();
 
         return shareLink;
       },
@@ -802,6 +948,7 @@ export const useQuizStore = create<QuizState>()(
         get().updateDailyProgress('games', 1);
         get().updateDailyProgress('correct', correctCount);
         get().checkAchievements();
+        get().syncToCloud();
       },
 
       resetAll: () => set(INITIAL_STATE),
@@ -830,6 +977,7 @@ export const useQuizStore = create<QuizState>()(
         unlockedAchievements: state.unlockedAchievements,
         dailyTasks: state.dailyTasks,
         dailyTasksDate: state.dailyTasksDate,
+        isCloudLoaded: state.isCloudLoaded,
       }),
     }
   )
