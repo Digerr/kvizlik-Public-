@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ШПИОН — Найди шпиона среди нас",
-  description: "Социальная игра на дедукцию и блеф для Telegram. Найди шпиона или не дай себя раскрыть!",
-  keywords: ["шпион", "spyfall", "игра", "telegram", "mini app", "дедукция", "блеф"],
+  title: "КВИЗЛИК — Проверь свои знания!",
+  description: "Квиз-игра для Telegram и VK. 8 категорий, 80+ вопросов, лиги и рейтинги!",
+  keywords: ["квиз", "викторина", "trivia", "telegram", "mini app", "игра", "знания"],
   icons: {
     icon: "/logo.svg",
   },
@@ -27,7 +27,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#000000",
+  themeColor: "#0f0a1e",
 };
 
 export default function RootLayout({
@@ -38,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white select-none`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0f0a1e] text-white select-none`}
       >
         {children}
         <Toaster />

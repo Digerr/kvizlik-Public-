@@ -1,40 +1,34 @@
 'use client';
 
-import { useGameStore } from '@/lib/game-store';
-import HomeScreen from '@/components/game/HomeScreen';
-import SetupScreen from '@/components/game/SetupScreen';
-import RoleRevealScreen from '@/components/game/RoleRevealScreen';
-import QuestioningScreen from '@/components/game/QuestioningScreen';
-import VotingScreen from '@/components/game/VotingScreen';
-import SpyGuessScreen from '@/components/game/SpyGuessScreen';
-import ResultsScreen from '@/components/game/ResultsScreen';
-import RulesScreen from '@/components/game/RulesScreen';
+import { useQuizStore } from '@/lib/quiz-store';
+import HomeScreen from '@/components/game/QuizHome';
+import CategoryScreen from '@/components/game/CategoryScreen';
+import GameScreen from '@/components/game/GameScreen';
+import ResultScreen from '@/components/game/ResultScreen';
+import LeaderboardScreen from '@/components/game/LeaderboardScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const phaseComponents: Record<string, React.ComponentType> = {
   home: HomeScreen,
-  setup: SetupScreen,
-  rules: RulesScreen,
-  roleReveal: RoleRevealScreen,
-  questioning: QuestioningScreen,
-  voting: VotingScreen,
-  spyGuess: SpyGuessScreen,
-  results: ResultsScreen,
+  category: CategoryScreen,
+  game: GameScreen,
+  result: ResultScreen,
+  leaderboard: LeaderboardScreen,
 };
 
 export default function Home() {
-  const { phase } = useGameStore();
+  const { phase } = useQuizStore();
   const Component = phaseComponents[phase] || HomeScreen;
 
   return (
-    <main className="min-h-[100dvh] bg-black overflow-hidden">
+    <main className="min-h-[100dvh] bg-[#0f0a1e] overflow-hidden">
       <AnimatePresence mode="wait">
         <motion.div
           key={phase}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.25 }}
+          transition={{ duration: 0.2 }}
         >
           <Component />
         </motion.div>
