@@ -518,6 +518,9 @@ export const useQuizStore = create<QuizState>()(
         const tid = state.telegramId;
         if (!tid) return;
 
+        // Don't sync until cloud data is loaded to prevent overwriting cloud with stale local data
+        if (!state.isCloudLoaded) return;
+
         const now = Date.now();
         if (now - state.lastCloudSync < 2000) return;
 
