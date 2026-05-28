@@ -1519,7 +1519,7 @@ export const useQuizStore = create<QuizState>()(
         unlockedAchievements: state.unlockedAchievements,
         dailyTasks: state.dailyTasks,
         dailyTasksDate: state.dailyTasksDate,
-        isCloudLoaded: state.isCloudLoaded,
+        // isCloudLoaded is NOT persisted — must always re-sync from cloud on app start
         // New persisted fields
         currentTheme: state.currentTheme,
         unlockedThemes: state.unlockedThemes,
