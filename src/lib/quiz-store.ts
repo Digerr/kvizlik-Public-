@@ -1536,6 +1536,13 @@ export const useQuizStore = create<QuizState>()(
         gamesPlayedToday: state.gamesPlayedToday,
         gamesPlayedTodayDate: state.gamesPlayedTodayDate,
       }),
+      merge: (persistedState: any, currentState: any) => {
+        // Always force isCloudLoaded to false on app start
+        // so cloud sync runs every time the app opens
+        const merged = { ...currentState, ...persistedState };
+        merged.isCloudLoaded = false;
+        return merged;
+      },
     }
   )
 );
