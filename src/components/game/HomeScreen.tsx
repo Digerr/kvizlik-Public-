@@ -1,94 +1,234 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { useGameStore } from '@/lib/game-store';
-import { Eye, Users, Trophy, BookOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useQuizStore } from '@/lib/quiz-store';
+import { AVATARS, LEAGUES, ACHIEVEMENTS } from '@/lib/quiz-data';
+import { useTelegram } from '@/hooks/use-telegram';
+import { useEffect, useState } from 'react';
+import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight } from 'lucide-react';
 
 export default function HomeScreen() {
-  const { setPhase } = useGameStore();
+  const {
+    playerName,
+    avatarId,
+    level,
+    coins,
+    dailyStreak,
+    totalScore,
+    currentLeague,
+    powerUps,
+    dailyTasks,
+    newAchievements,
+    setPhase,
+    refreshDailyTasks,
+  } = useQuizStore();
+
+  const { haptic, user } = useTelegram();
+  const [showAchievement, setShowAchievement] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshDailyTasks();
+  }, [refreshDailyTasks]);
+
+  useEffect(() => {
+    if (newAchievements.length > 0) {
+      const showTimer = setTimeout(() => {
+        setShowAchievement(newAchievements[0]);
+      }, 0);
+      const hideTimer = setTimeout(() => {
+        setShowAchievement(null);
+        useQuizStore.setState({ newAchievements: newAchievements.slice(1) });
+      }, 3000);
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+      };
+    }
+  }, [newAchievements]);
+
+  const avatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0];
+  const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
+  const displayName = playerName || user?.first_name || 'Игрок';
+  const unclaimedTask = dailyTasks.find(t => t.progress >= t.target && !t.claimed);
+  const totalPowerUps = powerUps.freeze + powerUps.fiftyFifty + powerUps.hint;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100dvh] px-6 py-8 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-[#0a0014] to-black" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-red-900/20 blur-[120px]" />
-      <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 w-[400px] h-[400px] rounded-full bg-amber-900/10 blur-[100px]" />
+    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-6 flex flex-col">
+      {/* Achievement Popup */}
+      <AnimatePresence>
+        {showAchievement && (() => {
+          const ach = ACHIEVEMENTS.find(a => a.id === showAchievement);
+          if (!ach) return null;
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: -60, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -60, scale: 0.8 }}
+              className="fixed top-4 left-4 right-4 z-50 bg-gradient-to-r from-yellow-600/90 to-amber-600/90 backdrop-blur-md rounded-2xl p-4 flex items-center gap-3 shadow-2xl"
+            >
+              <span className="text-3xl">{ach.emoji}</span>
+              <div className="flex-1">
+                <p className="text-white font-bold text-sm">Достижение разблокировано!</p>
+                <p className="text-white/80 text-xs">{ach.name}</p>
+              </div>
+              <span className="text-yellow-200 text-xs font-medium">+{ach.reward} 🪙</span>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
-      <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-sm">
-        {/* Logo */}
-        <motion.div
-          initial={{ scale: 0, rotate: -180 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: 'spring', duration: 0.8 }}
-          className="relative"
-        >
-          <div className="w-28 h-28 rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center shadow-[0_0_60px_rgba(220,38,38,0.4)]">
-            <Eye className="w-14 h-14 text-white" />
+      {/* Logo */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center mb-6"
+      >
+        <h1 className="text-4xl font-black tracking-tight">
+          <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+            КВИЗЛИК
+          </span>
+          <span className="ml-2">🧠</span>
+        </h1>
+        <p className="text-white/40 text-xs mt-1">Проверь свои знания!</p>
+      </motion.div>
+
+      {/* Player Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.1 }}
+        className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-[#251d45] flex items-center justify-center text-2xl border border-white/10">
+            {avatar.emoji}
           </div>
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -inset-2 rounded-full border-2 border-red-500/30"
-          />
-        </motion.div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-white font-bold truncate">{displayName}</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: league.color + '30', color: league.color }}>
+                {league.emoji} {league.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-white/50 text-xs">Ур. {level}</span>
+              <span className="text-white/30 text-xs">•</span>
+              <span className="text-yellow-400/80 text-xs">🪙 {coins}</span>
+              {dailyStreak > 0 && (
+                <>
+                  <span className="text-white/30 text-xs">•</span>
+                  <span className="text-orange-400/80 text-xs">🔥 {dailyStreak}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-white/30 text-[10px]">Бонусы: {totalPowerUps}</span>
+          </div>
+        </div>
+      </motion.div>
 
-        {/* Title */}
+      {/* Play Button */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => {
+          haptic('light');
+          setPhase('category');
+        }}
+        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-2xl mb-4 shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform"
+      >
+        🎮 Играть
+      </motion.button>
+
+      {/* Menu Buttons */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="grid grid-cols-2 gap-3 mb-4"
+      >
+        <button
+          onClick={() => { haptic('light'); setPhase('daily'); }}
+          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-orange-500/20 flex items-center justify-center text-lg">📋</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Задания</p>
+            <p className="text-white/40 text-[10px]">
+              {unclaimedTask ? 'Есть награда!' : `${dailyTasks.filter(t => t.claimed).length}/${dailyTasks.length}`}
+            </p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('achievements'); }}
+          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-yellow-500/20 flex items-center justify-center text-lg">🏆</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Достижения</p>
+            <p className="text-white/40 text-[10px]">Собирай награды</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('shop'); }}
+          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center text-lg">🛒</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Магазин</p>
+            <p className="text-white/40 text-[10px]">Бонусы и аватары</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('leaderboard'); }}
+          className="bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[#221a45] active:scale-[0.98] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center text-lg">📊</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Рейтинг</p>
+            <p className="text-white/40 text-[10px]">Топ игроков</p>
+          </div>
+        </button>
+      </motion.div>
+
+      {/* Profile Button */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+        onClick={() => { haptic('light'); setPhase('profile'); }}
+        className="w-full bg-[#1a1235] border border-white/10 rounded-2xl p-3 flex items-center gap-3 hover:bg-[#221a45] active:scale-[0.98] transition-all mb-4"
+      >
+        <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center text-lg">👤</div>
+        <span className="text-white text-sm font-medium">Профиль</span>
+        <ChevronRight className="w-4 h-4 text-white/30 ml-auto" />
+      </motion.button>
+
+      {/* Daily Task Preview */}
+      {unclaimedTask && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="text-center"
+          transition={{ delay: 0.4 }}
+          onClick={() => { haptic('light'); setPhase('daily'); }}
+          className="bg-gradient-to-r from-orange-600/20 to-amber-600/20 border border-orange-500/30 rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:from-orange-600/30 hover:to-amber-600/30 active:scale-[0.98] transition-all"
         >
-          <h1 className="text-5xl font-black tracking-wider text-white mb-2">
-            ШПИОН
-          </h1>
-          <p className="text-red-400/80 text-lg font-medium tracking-wide">
-            Найди шпиона среди нас
-          </p>
+          <span className="text-2xl">{unclaimedTask.emoji}</span>
+          <div className="flex-1">
+            <p className="text-white text-sm font-medium">{unclaimedTask.name}</p>
+            <p className="text-orange-300/60 text-xs">Награда: +{unclaimedTask.reward} 🪙</p>
+          </div>
+          <span className="bg-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl">
+            Забрать!
+          </span>
         </motion.div>
-
-        {/* Buttons */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="flex flex-col gap-4 w-full mt-4"
-        >
-          <button
-            onClick={() => setPhase('setup')}
-            className="w-full py-4 px-6 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold text-lg rounded-2xl shadow-[0_0_30px_rgba(220,38,38,0.3)] transition-all duration-300 active:scale-95 flex items-center justify-center gap-3"
-          >
-            <Users className="w-6 h-6" />
-            Новая игра
-          </button>
-
-          <button
-            onClick={() => setPhase('rules')}
-            className="w-full py-4 px-6 bg-white/5 hover:bg-white/10 text-white/80 font-semibold text-lg rounded-2xl border border-white/10 transition-all duration-300 active:scale-95 flex items-center justify-center gap-3"
-          >
-            <BookOpen className="w-6 h-6" />
-            Как играть
-          </button>
-
-          <button
-            onClick={() => setPhase('setup')}
-            className="w-full py-3 px-6 bg-white/5 hover:bg-white/10 text-amber-400/80 font-medium text-base rounded-2xl border border-amber-500/20 transition-all duration-300 active:scale-95 flex items-center justify-center gap-3"
-          >
-            <Trophy className="w-5 h-5" />
-            Рейтинг
-          </button>
-        </motion.div>
-
-        {/* Version */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="text-white/20 text-xs mt-8"
-        >
-          v1.0.0 demo
-        </motion.p>
-      </div>
+      )}
     </div>
   );
 }

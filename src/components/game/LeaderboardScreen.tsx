@@ -2,143 +2,118 @@
 
 import { motion } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { LEAGUES, getLeagueByScore } from '@/lib/quiz-data';
-import { ArrowLeft, Trophy, Medal, TrendingUp, Flame, Zap } from 'lucide-react';
+import { LEAGUES, AVATARS } from '@/lib/quiz-data';
+import { useTelegram } from '@/hooks/use-telegram';
+import { ArrowLeft } from 'lucide-react';
 
 export default function LeaderboardScreen() {
-  const { setPhase, totalScore, gamesPlayed, bestStreak, totalCorrect, totalQuestions } = useQuizStore();
-  const currentLeague = getLeagueByScore(totalScore);
-  const accuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+  const { leaderboard, totalScore, playerName, avatarId, setPhase } = useQuizStore();
+  const { haptic } = useTelegram();
 
-  // Generate some fake players for demo
-  const leaderboard = [
-    { name: 'Алексей', score: 890, league: LEAGUES[4] },
-    { name: 'Мария', score: 720, league: LEAGUES[4] },
-    { name: 'Дмитрий', score: 560, league: LEAGUES[3] },
-    { name: 'Екатерина', score: 430, league: LEAGUES[3] },
-    { name: 'Иван', score: 280, league: LEAGUES[2] },
-    { name: 'Анна', score: 160, league: LEAGUES[2] },
-    { name: 'Вы', score: totalScore, league: currentLeague, isYou: true },
-    { name: 'Олег', score: 40, league: LEAGUES[0] },
-  ].sort((a, b) => b.score - a.score);
+  const playerAvatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0];
+  const playerLeague = LEAGUES.find(l => l.id === useQuizStore.getState().currentLeague) || LEAGUES[0];
 
-  const playerRank = leaderboard.findIndex(p => p.isYou) + 1;
+  // Create full leaderboard with player inserted
+  const playerEntry = {
+    name: playerName || 'Ты',
+    score: totalScore,
+    avatarId: avatarId,
+    league: playerLeague.id,
+    isPlayer: true,
+  };
+
+  const allEntries = [...leaderboard.map(e => ({ ...e, isPlayer: false })), playerEntry]
+    .sort((a, b) => b.score - a.score);
+
+  const top3 = allEntries.slice(0, 3);
+  const rest = allEntries.slice(3);
+
+  const podiumOrder = [1, 0, 2]; // silver, gold, bronze display order
+  const podiumColors = ['bg-yellow-500/20 border-yellow-500/30', 'bg-gray-400/20 border-gray-400/30', 'bg-amber-700/20 border-amber-700/30'];
+  const podiumEmoji = ['🥇', '🥈', '🥉'];
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-[#0f0a1e] via-[#1a0f2e] to-[#0f0a1e] px-5 py-6">
+    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-4 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center gap-3 mb-5">
         <button
-          onClick={() => setPhase('home')}
-          className="text-white/50 hover:text-white/80 transition-colors text-sm flex items-center gap-1"
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Назад
+          <ArrowLeft className="w-4 h-4 text-white/70" />
         </button>
-        <h2 className="text-white font-bold text-lg flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-amber-400" />
-          Рейтинг
-        </h2>
-        <div className="w-12" />
+        <h2 className="text-white font-bold text-lg">Рейтинг</h2>
       </div>
 
-      {/* Your stats card */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-purple-600/20 to-blue-600/20 border border-purple-500/20 rounded-2xl p-5 mb-6"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-3xl">{currentLeague.emoji}</span>
-          <div>
-            <p className="text-white font-bold text-lg">{currentLeague.name}</p>
-            <p className="text-purple-300/60 text-xs">Ваш ранг: #{playerRank || '—'}</p>
-          </div>
-          <div className="ml-auto text-right">
-            <p className="text-white font-black text-2xl">{totalScore}</p>
-            <p className="text-white/30 text-[10px]">очков</p>
-          </div>
-        </div>
+      {/* Podium */}
+      <div className="flex items-end justify-center gap-2 mb-6 px-2">
+        {podiumOrder.map((idx, displayIdx) => {
+          const entry = top3[idx];
+          if (!entry) return <div key={idx} className="flex-1" />;
+          const avatar = AVATARS.find(a => a.id === entry.avatarId) || AVATARS[0];
+          const league = LEAGUES.find(l => l.id === entry.league) || LEAGUES[0];
+          const heights = ['h-28', 'h-24', 'h-20'];
 
-        <div className="grid grid-cols-4 gap-2">
-          <div className="bg-white/5 rounded-lg p-2 text-center">
-            <Zap className="w-3 h-3 text-purple-400 mx-auto mb-1" />
-            <p className="text-white font-bold text-xs">{gamesPlayed}</p>
-            <p className="text-white/25 text-[9px]">Игр</p>
-          </div>
-          <div className="bg-white/5 rounded-lg p-2 text-center">
-            <Medal className="w-3 h-3 text-emerald-400 mx-auto mb-1" />
-            <p className="text-white font-bold text-xs">{accuracy}%</p>
-            <p className="text-white/25 text-[9px]">Точность</p>
-          </div>
-          <div className="bg-white/5 rounded-lg p-2 text-center">
-            <Flame className="w-3 h-3 text-orange-400 mx-auto mb-1" />
-            <p className="text-white font-bold text-xs">{bestStreak}</p>
-            <p className="text-white/25 text-[9px]">Серия</p>
-          </div>
-          <div className="bg-white/5 rounded-lg p-2 text-center">
-            <TrendingUp className="w-3 h-3 text-blue-400 mx-auto mb-1" />
-            <p className="text-white font-bold text-xs">{totalCorrect}</p>
-            <p className="text-white/25 text-[9px]">Верных</p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Leagues */}
-      <div className="mb-6">
-        <p className="text-white/30 text-xs font-medium mb-3">Лиги</p>
-        <div className="flex gap-2">
-          {LEAGUES.map((league) => (
-            <div
-              key={league.id}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl ${
-                league.id === currentLeague.id
-                  ? 'bg-white/10 border border-white/20'
-                  : 'bg-white/3 border border-white/5'
-              }`}
-            >
-              <span className="text-xl">{league.emoji}</span>
-              <span className="text-white/40 text-[9px]">{league.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Leaderboard */}
-      <div>
-        <p className="text-white/30 text-xs font-medium mb-3">Топ игроков</p>
-        <div className="flex flex-col gap-1.5">
-          {leaderboard.map((player, i) => (
+          return (
             <motion.div
-              key={i}
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: displayIdx * 0.1 }}
+              className={`flex-1 flex flex-col items-center ${heights[displayIdx]} justify-end`}
+            >
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl mb-1 border-2 ${
+                idx === 0 ? 'bg-yellow-500/20 border-yellow-500/50' : idx === 1 ? 'bg-gray-400/20 border-gray-400/50' : 'bg-amber-700/20 border-amber-700/50'
+              }`}>
+                {avatar.emoji}
+              </div>
+              <span className="text-xs font-bold text-white truncate max-w-full px-1">
+                {entry.isPlayer ? 'Ты' : entry.name}
+              </span>
+              <span className="text-[10px] text-white/50">{league.emoji}</span>
+              <span className="text-sm font-black text-white mt-0.5">{entry.score}</span>
+              <span className="text-lg">{podiumEmoji[idx]}</span>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Full List */}
+      <div className="flex-1 overflow-y-auto max-h-96">
+        {allEntries.map((entry, i) => {
+          const avatar = AVATARS.find(a => a.id === entry.avatarId) || AVATARS[0];
+          const league = LEAGUES.find(l => l.id === entry.league) || LEAGUES[0];
+
+          return (
+            <motion.div
+              key={`${entry.name}-${i}`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
-                player.isYou
-                  ? 'bg-purple-600/20 border border-purple-500/30'
-                  : 'bg-white/3 border border-white/5'
+              transition={{ delay: i * 0.03 }}
+              className={`flex items-center gap-3 py-2.5 px-3 rounded-xl mb-1 ${
+                entry.isPlayer
+                  ? 'bg-purple-500/15 border border-purple-500/30'
+                  : 'bg-transparent'
               }`}
             >
-              <span className={`font-bold text-sm w-6 text-center ${
-                i === 0 ? 'text-amber-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-amber-600' : 'text-white/30'
-              }`}>
+              <span className={`w-7 text-center font-bold text-sm ${i < 3 ? 'text-yellow-400' : 'text-white/40'}`}>
                 {i + 1}
               </span>
-              <span className="text-lg">{player.league.emoji}</span>
-              <span className={`font-medium text-sm flex-1 ${
-                player.isYou ? 'text-purple-200' : 'text-white/60'
-              }`}>
-                {player.name}
+              <div className="w-8 h-8 rounded-full bg-[#1a1235] flex items-center justify-center text-sm border border-white/10">
+                {avatar.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-white text-sm font-medium truncate block">
+                  {entry.isPlayer ? 'Ты' : entry.name}
+                </span>
+              </div>
+              <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: league.color + '20', color: league.color }}>
+                {league.emoji}
               </span>
-              <span className={`font-bold text-sm ${
-                player.isYou ? 'text-purple-300' : 'text-white/40'
-              }`}>
-                {player.score}
-              </span>
+              <span className="text-white font-bold text-sm min-w-[40px] text-right">{entry.score}</span>
             </motion.div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );

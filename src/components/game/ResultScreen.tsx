@@ -1,199 +1,204 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useQuizStore } from '@/lib/quiz-store';
-import { getLeagueByScore, CATEGORIES } from '@/lib/quiz-data';
-import { Trophy, RotateCcw, Home, Zap, Target, Clock, Flame, TrendingUp } from 'lucide-react';
+import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
+import { LEAGUES, getLeagueByScore, getLeagueProgress, ACHIEVEMENTS } from '@/lib/quiz-data';
+import { useTelegram } from '@/hooks/use-telegram';
+import { Trophy, Home, RotateCcw, Share2 } from 'lucide-react';
 
 export default function ResultScreen() {
   const {
     answers,
     questions,
     totalScore,
-    gamesPlayed,
+    currentLeague,
     bestStreak,
-    categoryId,
+    totalXP,
+    level,
+    newAchievements,
     playAgain,
     setPhase,
-    resetAll,
   } = useQuizStore();
 
+  const { haptic, tg, isInTelegram } = useTelegram();
+
   const correctCount = answers.filter(a => a.isCorrect).length;
-  const totalQ = questions.length;
-  const percentage = Math.round((correctCount / totalQ) * 100);
-  const avgTime = answers.length > 0
-    ? (answers.reduce((sum, a) => sum + a.timeSpent, 0) / answers.length).toFixed(1)
-    : '0';
-  const league = getLeagueByScore(totalScore);
-  const category = CATEGORIES.find(c => c.id === categoryId);
+  const totalQuestions = questions.length;
+  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+  const isPerfect = correctCount === totalQuestions && totalQuestions > 0;
 
-  const getEmoji = () => {
-    if (percentage === 100) return '🏆';
-    if (percentage >= 80) return '🌟';
-    if (percentage >= 60) return '👏';
-    if (percentage >= 40) return '🤔';
-    return '😅';
-  };
+  // Score & coins calculation (mirroring endGame logic for display)
+  const avgTime = answers.length > 0 ? answers.reduce((s, a) => s + a.timeSpent, 0) / answers.length : 0;
+  let roundScore = correctCount * 10;
+  if (avgTime < 5) roundScore += 5;
+  if (bestStreak >= 5) roundScore += 10;
+  if (bestStreak >= 10) roundScore += 20;
+  if (isPerfect) roundScore += 25;
+  const coinsEarned = Math.ceil(roundScore / 2);
 
-  const getMessage = () => {
-    if (percentage === 100) return 'Идеально!';
-    if (percentage >= 80) return 'Отлично!';
-    if (percentage >= 60) return 'Хороший результат!';
-    if (percentage >= 40) return 'Неплохо, но можно лучше';
-    return 'Попробуй ещё раз!';
+  const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
+  const nextLeague = LEAGUES[LEAGUES.indexOf(league) + 1];
+  const leagueProgress = getLeagueProgress(totalScore);
+
+  const newXPAchievements = newAchievements.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
+
+  const shareText = `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
+
+  const handleShare = () => {
+    haptic('light');
+    if (isInTelegram && tg) {
+      try {
+        tg.showPopup({
+          title: 'Поделиться результатом',
+          message: shareText,
+          buttons: [{ type: 'ok' }],
+        });
+      } catch {
+        navigator.clipboard.writeText(shareText);
+      }
+    } else {
+      navigator.clipboard.writeText(shareText);
+    }
   };
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-[#0f0a1e] via-[#1a0f2e] to-[#0f0a1e] flex flex-col items-center px-6 py-8 overflow-y-auto">
-      {/* Emoji */}
+    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-6 flex flex-col">
+      {/* Trophy Animation */}
       <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', duration: 0.6 }}
-        className="text-6xl mb-4"
+        initial={{ opacity: 0, scale: 0.3, rotate: -20 }}
+        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+        transition={{ type: 'spring', damping: 12, stiffness: 100 }}
+        className="text-center mb-6"
       >
-        {getEmoji()}
+        <div className="text-6xl mb-2">
+          {isPerfect ? '🏆' : correctCount > totalQuestions / 2 ? '⭐' : '💪'}
+        </div>
+        <h2 className="text-white text-2xl font-black">
+          {isPerfect ? 'Перфект!' : correctCount > totalQuestions / 2 ? 'Отлично!' : 'Не сдавайся!'}
+        </h2>
       </motion.div>
 
-      {/* Message */}
-      <motion.h2
+      {/* Score Breakdown */}
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="text-white text-2xl font-black mb-1"
+        className="bg-[#1a1235] border border-white/10 rounded-2xl p-5 mb-4"
       >
-        {getMessage()}
-      </motion.h2>
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        <div className="grid grid-cols-3 gap-4 text-center mb-4">
+          <div>
+            <p className="text-2xl font-black text-green-400">{correctCount}</p>
+            <p className="text-white/40 text-[10px]">из {totalQuestions}</p>
+            <p className="text-white/50 text-xs">правильных</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-purple-400">{roundScore}</p>
+            <p className="text-white/40 text-[10px]">очков</p>
+            <p className="text-white/50 text-xs">набрано</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-yellow-400">{coinsEarned}</p>
+            <p className="text-white/40 text-[10px]">монет</p>
+            <p className="text-white/50 text-xs">заработано</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-t border-white/10">
+          <span className="text-white/50 text-sm">Точность</span>
+          <span className="text-white font-bold text-sm">{accuracy}%</span>
+        </div>
+        <div className="flex items-center justify-between py-2 border-t border-white/10">
+          <span className="text-white/50 text-sm">Лучшая серия</span>
+          <span className="text-orange-400 font-bold text-sm">🔥 {bestStreak}</span>
+        </div>
+      </motion.div>
+
+      {/* League Progress */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="text-white/40 text-sm mb-6"
+        className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-4"
       >
-        {category?.name || 'Микс'} · {correctCount} из {totalQ}
-      </motion.p>
-
-      {/* Score circle */}
-      <motion.div
-        initial={{ scale: 0.5, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.3, type: 'spring' }}
-        className="relative w-36 h-36 mb-6"
-      >
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-          <circle
-            cx="50" cy="50" r="42"
-            fill="none"
-            stroke={percentage >= 60 ? '#8b5cf6' : '#ef4444'}
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={`${(percentage / 100) * 264} 264`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-white text-3xl font-black">{percentage}%</span>
-          <span className="text-white/30 text-xs">правильных</span>
-        </div>
-      </motion.div>
-
-      {/* Stats grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="grid grid-cols-3 gap-3 w-full max-w-sm mb-6"
-      >
-        <div className="bg-white/5 border border-white/5 rounded-xl p-3 text-center">
-          <Target className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
-          <p className="text-white font-bold">{correctCount}</p>
-          <p className="text-white/30 text-[10px]">Верных</p>
-        </div>
-        <div className="bg-white/5 border border-white/5 rounded-xl p-3 text-center">
-          <Clock className="w-4 h-4 text-blue-400 mx-auto mb-1" />
-          <p className="text-white font-bold">{avgTime}с</p>
-          <p className="text-white/30 text-[10px]">Среднее</p>
-        </div>
-        <div className="bg-white/5 border border-white/5 rounded-xl p-3 text-center">
-          <Flame className="w-4 h-4 text-orange-400 mx-auto mb-1" />
-          <p className="text-white font-bold">{bestStreak}</p>
-          <p className="text-white/30 text-[10px]">Серия</p>
-        </div>
-      </motion.div>
-
-      {/* League */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
-        className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-4 mb-6"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{league.emoji}</span>
-            <div>
-              <p className="text-white font-bold text-sm">{league.name}</p>
-              <p className="text-white/30 text-xs">Текущая лига</p>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{league.emoji}</span>
+            <span className="text-white font-bold text-sm">{league.name}</span>
+          </div>
+          {nextLeague && (
+            <div className="flex items-center gap-2">
+              <span className="text-white/30 text-xs">→</span>
+              <span className="text-lg">{nextLeague.emoji}</span>
+              <span className="text-white/50 text-xs">{nextLeague.name}</span>
             </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-purple-400" />
-            <span className="text-purple-300 font-bold text-sm">{totalScore}</span>
-          </div>
+          )}
         </div>
+        <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${leagueProgress}%` }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+            className="h-full rounded-full"
+            style={{ backgroundColor: league.color }}
+          />
+        </div>
+        <p className="text-white/40 text-[10px] mt-1 text-right">{leagueProgress}% до {nextLeague?.name || 'максимума'}</p>
       </motion.div>
 
-      {/* Answer review */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-        className="w-full max-w-sm mb-6"
-      >
-        <p className="text-white/30 text-xs font-medium mb-3">Ваши ответы</p>
-        <div className="flex flex-col gap-1.5">
-          {questions.map((q, i) => {
-            const answer = answers[i];
-            const isCorrect = answer?.isCorrect ?? false;
-            return (
-              <div
-                key={q.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-                  isCorrect ? 'bg-emerald-500/10' : 'bg-red-500/10'
-                }`}
-              >
-                <span className={`shrink-0 ${isCorrect ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {isCorrect ? '✓' : '✗'}
-                </span>
-                <span className="text-white/50 truncate flex-1">{q.question}</span>
-              </div>
-            );
-          })}
-        </div>
-      </motion.div>
+      {/* New Achievements */}
+      {newXPAchievements.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 mb-4"
+        >
+          <p className="text-yellow-300 font-bold text-sm mb-2">🏅 Новые достижения!</p>
+          {newXPAchievements.map(ach => ach && (
+            <div key={ach.id} className="flex items-center gap-2 py-1">
+              <span className="text-lg">{ach.emoji}</span>
+              <span className="text-white/80 text-sm">{ach.name}</span>
+              <span className="text-yellow-300/60 text-xs ml-auto">+{ach.reward} 🪙</span>
+            </div>
+          ))}
+        </motion.div>
+      )}
 
-      {/* Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.9 }}
-        className="flex flex-col gap-3 w-full max-w-sm"
-      >
-        <button
-          onClick={playAgain}
-          className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-base rounded-2xl shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all active:scale-95 flex items-center justify-center gap-2"
+      {/* Action Buttons */}
+      <div className="mt-auto flex flex-col gap-2.5">
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { haptic('light'); playAgain(); }}
+          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
         >
-          <RotateCcw className="w-5 h-5" />
-          Играть снова
-        </button>
-        <button
-          onClick={resetAll}
-          className="w-full py-3 px-6 bg-white/5 hover:bg-white/10 text-white/50 font-medium text-sm rounded-2xl border border-white/5 transition-all active:scale-95 flex items-center justify-center gap-2"
+          <RotateCcw className="w-4 h-4" /> Играть снова
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={handleShare}
+          className="w-full bg-[#1a1235] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
-          <Home className="w-4 h-4" />
-          На главную
-        </button>
-      </motion.div>
+          <Share2 className="w-4 h-4" /> Поделиться
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-full bg-[#1a1235] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[#221a45] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        >
+          <Home className="w-4 h-4" /> На главную
+        </motion.button>
+      </div>
     </div>
   );
 }

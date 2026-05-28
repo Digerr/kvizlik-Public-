@@ -2,72 +2,104 @@
 
 import { motion } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
-import { CATEGORIES, getQuestionsForCategory, getMixedQuestions } from '@/lib/quiz-data';
-import { ArrowLeft, Shuffle, Zap } from 'lucide-react';
+import { CATEGORIES, getQuestionsForCategory, getMixedQuestions, getQuestionsByDifficulty } from '@/lib/quiz-data';
+import { useTelegram } from '@/hooks/use-telegram';
+import { ArrowLeft } from 'lucide-react';
+
+const DIFFICULTY_OPTIONS = [
+  { value: 1 as const, label: 'Легко', emoji: '🟢' },
+  { value: 2 as const, label: 'Средне', emoji: '🟡' },
+  { value: 3 as const, label: 'Сложно', emoji: '🔴' },
+];
 
 export default function CategoryScreen() {
-  const { setPhase, startGame } = useQuizStore();
+  const { difficulty, setDifficulty, startGame, seenQuestions, setPhase } = useQuizStore();
+  const { haptic } = useTelegram();
 
-  const handleCategory = (categoryId: string) => {
-    const questions = getQuestionsForCategory(categoryId, 10);
-    startGame(categoryId, questions);
+  const handleCategorySelect = (categoryId: string | null) => {
+    haptic('light');
+    const questions = getQuestionsByDifficulty(categoryId, difficulty, 10, seenQuestions);
+    if (questions.length === 0) {
+      // fallback
+      const fallback = categoryId
+        ? getQuestionsForCategory(categoryId, 10, seenQuestions)
+        : getMixedQuestions(10, seenQuestions);
+      startGame(categoryId, fallback);
+    } else {
+      startGame(categoryId, questions);
+    }
   };
 
   const handleMixed = () => {
-    const questions = getMixedQuestions(10);
-    startGame(null, questions);
+    haptic('light');
+    const questions = getQuestionsByDifficulty(null, difficulty, 10, seenQuestions);
+    if (questions.length === 0) {
+      startGame(null, getMixedQuestions(10, seenQuestions));
+    } else {
+      startGame(null, questions);
+    }
   };
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-[#0f0a1e] via-[#1a0f2e] to-[#0f0a1e] px-5 py-6">
+    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-4 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center gap-3 mb-5">
         <button
-          onClick={() => setPhase('home')}
-          className="text-white/50 hover:text-white/80 transition-colors text-sm flex items-center gap-1"
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Назад
+          <ArrowLeft className="w-4 h-4 text-white/70" />
         </button>
-        <h2 className="text-white font-bold text-lg">Выбери тему</h2>
-        <div className="w-12" />
+        <h2 className="text-white font-bold text-lg">Выбери категорию</h2>
       </div>
 
-      {/* Mixed mode */}
+      {/* Difficulty Selector */}
+      <div className="flex gap-2 mb-5">
+        {DIFFICULTY_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => { haptic('light'); setDifficulty(opt.value); }}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] ${
+              difficulty === opt.value
+                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-600/20'
+                : 'bg-[#1a1235] border border-white/10 text-white/60 hover:bg-[#221a45]'
+            }`}
+          >
+            {opt.emoji} {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Mixed Category */}
       <motion.button
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
+        whileTap={{ scale: 0.97 }}
         onClick={handleMixed}
-        className="w-full mb-6 py-5 px-6 bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-500/30 rounded-2xl transition-all active:scale-[0.98] flex items-center gap-4"
+        className="w-full bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30 rounded-2xl p-4 mb-4 flex items-center gap-3 hover:from-purple-600/40 hover:to-blue-600/40 active:scale-[0.98] transition-all"
       >
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shrink-0">
-          <Shuffle className="w-6 h-6 text-white" />
-        </div>
+        <span className="text-3xl">🎲</span>
         <div className="text-left">
-          <p className="text-white font-bold">Микс</p>
-          <p className="text-white/40 text-xs">Вопросы из всех категорий</p>
+          <p className="text-white font-bold">Микс (всё подряд)</p>
+          <p className="text-white/50 text-xs">Вопросы из всех категорий</p>
         </div>
-        <Zap className="w-5 h-5 text-purple-400 ml-auto" />
       </motion.button>
 
-      {/* Categories grid */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Category Grid */}
+      <div className="grid grid-cols-2 gap-3 flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
         {CATEGORIES.map((cat, i) => (
           <motion.button
             key={cat.id}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            onClick={() => handleCategory(cat.id)}
-            className="flex flex-col items-start gap-2 p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all active:scale-[0.97] text-left"
+            transition={{ delay: i * 0.04 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => handleCategorySelect(cat.id)}
+            className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 flex flex-col items-start gap-2 hover:bg-[#221a45] active:scale-[0.98] transition-all text-left"
           >
-            <span className="text-3xl">{cat.emoji}</span>
-            <p className="text-white font-semibold text-sm">{cat.name}</p>
-            <p className="text-white/30 text-[10px] leading-tight">{cat.description}</p>
-            <div
-              className="h-1 w-8 rounded-full mt-1"
-              style={{ backgroundColor: cat.color + '60' }}
-            />
+            <span className="text-2xl">{cat.emoji}</span>
+            <p className="text-white font-semibold text-sm leading-tight">{cat.name}</p>
+            <p className="text-white/40 text-[10px] leading-tight">{cat.description}</p>
           </motion.button>
         ))}
       </div>

@@ -1,11 +1,15 @@
 'use client';
 
 import { useQuizStore } from '@/lib/quiz-store';
-import HomeScreen from '@/components/game/QuizHome';
+import HomeScreen from '@/components/game/HomeScreen';
 import CategoryScreen from '@/components/game/CategoryScreen';
 import GameScreen from '@/components/game/GameScreen';
 import ResultScreen from '@/components/game/ResultScreen';
 import LeaderboardScreen from '@/components/game/LeaderboardScreen';
+import ProfileScreen from '@/components/game/ProfileScreen';
+import AchievementsScreen from '@/components/game/AchievementsScreen';
+import ShopScreen from '@/components/game/ShopScreen';
+import DailyScreen from '@/components/game/DailyScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const phaseComponents: Record<string, React.ComponentType> = {
@@ -14,6 +18,10 @@ const phaseComponents: Record<string, React.ComponentType> = {
   game: GameScreen,
   result: ResultScreen,
   leaderboard: LeaderboardScreen,
+  profile: ProfileScreen,
+  achievements: AchievementsScreen,
+  shop: ShopScreen,
+  daily: DailyScreen,
 };
 
 export default function Home() {
