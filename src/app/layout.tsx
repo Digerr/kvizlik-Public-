@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "КВИЗЛИК — Проверь свои знания!",
   description: "Квиз-игра для Telegram и VK. 8 категорий, 80+ вопросов, лиги и рейтинги!",
-  keywords: ["квиз", "викторина", "trivia", "telegram", "mini app", "игра", "знания"],
+  keywords: ["квиз", "викторина", "trivia", "telegram", "vk", "mini app", "игра", "знания"],
   icons: {
     icon: "/logo.svg",
   },
@@ -39,6 +39,7 @@ export default function RootLayout({
     <html lang="ru" suppressHydrationWarning>
       <head>
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
+        <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js" async></script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0f0a1e] text-white select-none`}
