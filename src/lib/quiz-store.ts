@@ -203,6 +203,7 @@ export interface QuizState {
   clanId: string | null;
   clanName: string | null;
   notificationsEnabled: boolean;
+  hasSeenTutorial: boolean;
   lastCloudSync: number;
 
   // Leaderboard (real from cloud)
@@ -321,6 +322,7 @@ export interface QuizState {
   answerMiniGame: (answer: boolean) => void;
   rateQuestion: (questionId: string, liked: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setHasSeenTutorial: (seen: boolean) => void;
   resetAll: () => void;
 }
 
@@ -462,6 +464,7 @@ const INITIAL_STATE = {
   clanId: null,
   clanName: null,
   notificationsEnabled: true,
+  hasSeenTutorial: false,
   lastCloudSync: 0,
   leaderboard: [] as LeaderboardEntry[],
   // New features
@@ -1751,6 +1754,7 @@ export const useQuizStore = create<QuizState>()(
         set({ questionRatings: { ...state.questionRatings, [questionId]: liked } });
       },
       setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
+      setHasSeenTutorial: (seen) => set({ hasSeenTutorial: seen }),
       resetAll: () => set(INITIAL_STATE),
     }),
     {
@@ -1799,6 +1803,7 @@ export const useQuizStore = create<QuizState>()(
         seasonPassClaimed: state.seasonPassClaimed,
         questionRatings: state.questionRatings,
         notificationsEnabled: state.notificationsEnabled,
+        hasSeenTutorial: state.hasSeenTutorial,
       }),
       merge: (persistedState: any, currentState: any) => {
         // Always force isCloudLoaded to false on app start
