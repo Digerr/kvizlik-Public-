@@ -24,6 +24,8 @@ import FriendsScreen from '@/components/game/FriendsScreen';
 import ClanScreen from '@/components/game/ClanScreen';
 import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
 import OnboardingScreen from '@/components/game/OnboardingScreen';
+import PrivacyPolicyScreen from '@/components/game/PrivacyPolicyScreen';
+import UnsupportedScreen from '@/components/game/UnsupportedScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
@@ -52,6 +54,8 @@ const phaseComponents: Record<string, React.ComponentType> = {
   clan: ClanScreen,
   submit_question: SubmitQuestionScreen,
   onboarding: OnboardingScreen,
+  privacy_policy: PrivacyPolicyScreen,
+  unsupported: UnsupportedScreen,
 };
 
 // ---------------------------------------------------------------------------
@@ -399,8 +403,21 @@ export default function Home() {
   // Show onboarding for first-time users
   const showOnboarding = !hasSeenTutorial;
   
-  const effectivePhase = showOnboarding ? 'onboarding' : phase;
+  const effectivePhase = isUnsupported ? 'unsupported' : showOnboarding ? 'onboarding' : phase;
   const Component = phaseComponents[effectivePhase] || HomeScreen;
+
+  // Detect unsupported browsers
+  const isUnsupported = typeof window !== 'undefined' && (() => {
+    try {
+      const ua = navigator.userAgent;
+      // Very old browsers detection
+      const isOldAndroid = /Android [1-4]/.test(ua);
+      const isOldIOS = /iPhone OS [1-9]_/.test(ua) && !/iPhone OS 1[0-9]/.test(ua);
+      const isOperaMini = /Opera Mini/.test(ua);
+      const isUCBrowser = /UCBrowser/.test(ua) && parseFloat(ua.match(/UCBrowser\/([\d.]+)/)?.[1] || '99') < 12;
+      return isOldAndroid || isOldIOS || isOperaMini || isUCBrowser;
+    } catch { return false; }
+  })();
 
   useDuelUrlHandler();
   const { gamesPlayedToday, showReminder } = useCloudSync();
