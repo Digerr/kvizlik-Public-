@@ -1,56 +1,62 @@
 "use client";
 import { useQuizStore } from "@/lib/quiz-store";
+import { useTelegram } from "@/hooks/use-telegram";
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 
 export default function FriendsScreen() {
-  const { setPhase, friendList, telegramId } = useQuizStore();
+  const { setPhase, friendList } = useQuizStore();
+  const { haptic, share, getReferralLink } = useTelegram();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const referralLink = telegramId 
-    ? `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId}`
-    : "";
+  const referralLink = getReferralLink();
 
   const shareInvite = () => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent("Привет! Играй в КВИЗЛИК со мной! 🎯")}`
-      );
-    }
+    haptic('light');
+    share(referralLink, "Привет! Играй в КВИЗЛИК со мной! 🎯🧠");
   };
 
   return (
-    <div className="p-4 min-h-[100dvh] bg-[var(--theme-bg)]">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={() => setPhase("home")} className="text-white/60 text-sm">← Назад</button>
-        <h2 className="text-xl font-bold text-white">👥 Друзья</h2>
-        <div />
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
+        >
+          <ArrowLeft className="w-4 h-4 text-white/70" />
+        </button>
+        <h2 className="text-white font-bold text-lg">👥 Друзья</h2>
       </div>
 
+      {/* Invite Button */}
       <div className="mb-6">
         <motion.button
           onClick={shareInvite}
-          className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold"
+          className="w-full p-4 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold active:scale-[0.97] transition-transform"
           whileTap={{ scale: 0.97 }}
         >
-          🎁 Пригласить друга (+200 монет)
+          🎁 Пригласить друга (+50 монет)
         </motion.button>
         <p className="text-white/40 text-xs text-center mt-2">
-          Друг получит 100 монет при регистрации!
+          Друг получит 50 монет при регистрации!
         </p>
       </div>
 
+      {/* Search */}
       <div className="mb-6">
         <input
           type="text"
           placeholder="🔍 Поиск по имени..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full p-3 rounded-xl bg-[var(--theme-card)] text-white border border-white/10 focus:border-blue-500 outline-none"
+          className="w-full p-3 rounded-xl bg-[var(--theme-card)] text-white border border-white/10 focus:border-purple-500 outline-none"
         />
       </div>
 
-      <div className="space-y-3">
+      {/* Friends List */}
+      <div className="flex-1 overflow-y-auto">
         {friendList.length === 0 ? (
           <div className="text-center text-white/40 py-8">
             <div className="text-4xl mb-3">🤝</div>
@@ -58,13 +64,13 @@ export default function FriendsScreen() {
             <p className="text-sm mt-2">Пригласи друзей и играй вместе!</p>
           </div>
         ) : (
-          friendList.map((friend) => (
-            <div key={friend.telegramId} className="p-3 rounded-xl bg-[var(--theme-card)] flex items-center justify-between">
+          friendList.map((friend, i) => (
+            <div key={friend.telegramId || i} className="p-3 rounded-xl bg-[var(--theme-card)] flex items-center justify-between mb-2 border border-white/5">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{friend.avatarId === "default" ? "🧠" : "👤"}</span>
                 <span className="text-white">{friend.name}</span>
               </div>
-              <button className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm">
+              <button className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-sm">
                 ⚔️ Дуэль
               </button>
             </div>
