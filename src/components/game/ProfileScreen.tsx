@@ -49,7 +49,7 @@ export default function ProfileScreen() {
     telegramId,
   } = useQuizStore();
 
-  const { haptic, user } = useTelegram();
+  const { haptic, user, platform, isInVK } = useTelegram();
 
   const avatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0];
   const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
@@ -85,16 +85,27 @@ export default function ProfileScreen() {
   const isCrownFrame = profileFrame === 'crown';
 
   // Referral link
-  const referralLink = `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId || 'user'}`;
+  const referralLink = isInVK
+    ? `https://vk.com/app54615586`
+    : `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId || 'user'}`;
   const shareText = 'Привет! Играй в КВИЗЛИК со мной! 🎯🧠';
 
-  const handleShareReferral = () => {
+  const handleShareReferral = async () => {
     haptic('light');
-    const encodedUrl = encodeURIComponent(referralLink);
-    const encodedText = encodeURIComponent(shareText);
-    window.Telegram?.WebApp.openTelegramLink(
-      `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`
-    );
+    if (isInVK) {
+      try {
+        const vkBridge = (await import('@vkontakte/vk-bridge')).default;
+        await vkBridge.send('VKWebAppShare', { link: referralLink });
+      } catch {
+        navigator.clipboard?.writeText(shareText + '\n' + referralLink);
+      }
+    } else {
+      const encodedUrl = encodeURIComponent(referralLink);
+      const encodedText = encodeURIComponent(shareText);
+      window.Telegram?.WebApp.openTelegramLink(
+        `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`
+      );
+    }
   };
 
   return (
@@ -331,3 +342,4 @@ export default function ProfileScreen() {
     </div>
   );
 }
+
