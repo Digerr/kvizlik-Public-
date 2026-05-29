@@ -1,79 +1,64 @@
 "use client";
 import { useQuizStore } from "@/lib/quiz-store";
+import { useTelegram } from "@/hooks/use-telegram";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { ArrowLeft, Lock } from "lucide-react";
 
 export default function ClanScreen() {
-  const { setPhase, clanId, clanName, playerName } = useQuizStore();
-  const [clanInput, setClanInput] = useState("");
-
-  const isInClan = !!clanId;
+  const { setPhase } = useQuizStore();
+  const { haptic } = useTelegram();
 
   return (
-    <div className="p-4 min-h-[100dvh] bg-[var(--theme-bg)]">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={() => setPhase("home")} className="text-white/60 text-sm">← Назад</button>
-        <h2 className="text-xl font-bold text-white">🏠 Кланы</h2>
-        <div />
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => { haptic('light'); setPhase('home'); }}
+          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
+        >
+          <ArrowLeft className="w-4 h-4 text-white/70" />
+        </button>
+        <h2 className="text-white font-bold text-lg">🏰 Кланы</h2>
       </div>
 
-      {isInClan ? (
-        <div>
-          <div className="p-5 rounded-xl bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 mb-6">
-            <div className="text-3xl mb-2">🏰</div>
-            <div className="text-white font-bold text-xl">{clanName}</div>
-            <div className="text-white/60 text-sm mt-1">10/10 участников</div>
+      {/* Coming Soon */}
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', damping: 12 }}
+          className="mb-6"
+        >
+          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-10 h-10 text-purple-400/60" />
           </div>
-          <div className="space-y-3">
-            <div className="text-white/80 font-bold">Участники</div>
-            {[1,2,3,4,5].map(i => (
-              <div key={i} className="p-3 rounded-xl bg-[var(--theme-card)] flex items-center gap-3">
-                <span className="text-xl">👤</span>
-                <span className="text-white">Игрок {i}</span>
-                <span className="text-white/40 text-sm ml-auto">{1000 - i * 100} очков</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div>
-          <div className="text-center text-white/40 py-6 mb-6">
-            <div className="text-5xl mb-3">🏰</div>
-            <p>Создай или вступи в клан!</p>
-            <p className="text-sm mt-1">До 10 игроков, командный рейтинг и награды</p>
-          </div>
+        </motion.div>
 
-          <div className="space-y-4">
-            <div>
-              <input
-                type="text"
-                placeholder="Название клана..."
-                value={clanInput}
-                onChange={(e) => setClanInput(e.target.value)}
-                className="w-full p-3 rounded-xl bg-[var(--theme-card)] text-white border border-white/10 focus:border-purple-500 outline-none"
-              />
-            </div>
-            <motion.button
-              className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500 to-blue-500 text-white font-bold"
-              whileTap={{ scale: 0.97 }}
-            >
-              🏰 Создать клан (500 монет)
-            </motion.button>
-          </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <h3 className="text-white font-bold text-xl mb-2">Скоро!</h3>
+          <p className="text-white/50 text-sm leading-relaxed max-w-xs">
+            Кланы пока в разработке. Скоро вы сможете создавать кланы, приглашать друзей и соревноваться за командный рейтинг!
+          </p>
+        </motion.div>
 
-          <div className="mt-8">
-            <div className="text-white/80 font-bold mb-3">Открытые кланы</div>
-            {["Квиз Мастера", "Знатоки", "Эрудиты"].map(name => (
-              <div key={name} className="p-3 rounded-xl bg-[var(--theme-card)] flex items-center justify-between mb-2">
-                <span className="text-white">{name}</span>
-                <button className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-sm">
-                  Вступить
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-8 bg-purple-500/10 border border-purple-500/20 rounded-2xl p-4 max-w-xs"
+        >
+          <p className="text-purple-300 text-xs leading-relaxed">
+            🏰 Командные рейтинги<br />
+            ⚔️ Клановые турниры<br />
+            🎁 Эксклюзивные награды<br />
+            👥 До 10 участников
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 }
