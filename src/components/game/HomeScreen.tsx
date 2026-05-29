@@ -334,7 +334,7 @@ export default function HomeScreen() {
 
       {/* Footer */}
       <div className="mt-auto pt-6 text-center">
-        <p className="text-white/20 text-[10px]">КВИЗЛИК v3.1 • made by @SergoDev</p>
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v4.0 • made by @SergoDev</p>
       </div>
     </div>
   );
