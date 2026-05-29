@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
 import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft, ChevronDown, HelpCircle, Gamepad2, Trophy, Coins, Swords, Shield, Flame, Gift, Ticket, Dice5, Users, Castle, Frame, Link2, Calendar, ThumbsUp, Palette, ShieldCheck, Cloud, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ChevronDown, HelpCircle, Gamepad2, Shield, FileText, Trophy, Coins, Swords, Shield, Flame, Gift, Ticket, Dice5, Users, Castle, Frame, Link2, Calendar, ThumbsUp, Palette, ShieldCheck, Cloud, MessageCircle } from 'lucide-react';
 
 const FAQ_ITEMS = [
   {
@@ -134,6 +134,14 @@ const FAQ_ITEMS = [
     gradient: 'from-blue-400 to-sky-300',
   },
   {
+    question: 'Политика конфиденциальности',
+    answer: 'Нажмите на этот вопрос, чтобы перейти к полной политике конфиденциальности и условиям использования приложения.',
+    emoji: '🛡️',
+    icon: Shield,
+    gradient: 'from-purple-500 to-indigo-400',
+    isLegal: true,
+  },
+  {
     question: 'Как связаться с разработчиком?',
     answer: 'Нашли баг или есть предложение? Пишите @Digerr в Telegram или в сообщениях группы VK. Мы всегда рады обратной связи!',
     emoji: '💬',
@@ -182,7 +190,7 @@ export default function FaqScreen() {
                 }`}
               >
                 <button
-                  onClick={() => { haptic('light'); setOpenIndex(isOpen ? null : i); }}
+                  onClick={() => { haptic('light'); if (item.isLegal) { useQuizStore.getState().setPhase('privacy_policy'); } else { setOpenIndex(isOpen ? null : i); } }}
                   className="w-full p-3.5 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
                 >
                   {/* Icon circle */}
