@@ -57,36 +57,38 @@ declare global {
  * Existing components don't need ANY changes.
  */
 export function useTelegram() {
-  const platform = usePlatform();
+  const p = usePlatform();
 
   // Create a TelegramWebApp-compatible object for components that use tg.*
-  const tgCompat: TelegramWebApp | null = (() => {
-    if (platform.platform === "telegram" && typeof window !== "undefined" && window.Telegram?.WebApp) {
+  const tgCompat: TelegramWebApp = (() => {
+    // In Telegram, use the real Telegram WebApp object
+    if (p.platform === "telegram" && typeof window !== "undefined" && window.Telegram?.WebApp) {
       return window.Telegram.WebApp;
     }
-    // For VK/web, create a compatible adapter
+    // For VK/web, create a compatible adapter that won't crash
     return {
-      ready: platform.ready,
+      ready: () => p.ready(),
       close: () => {},
-      expand: platform.expand,
-      openTelegramLink: (url: string) => platform.openLink(url),
+      expand: () => p.expand(),
+      openTelegramLink: (url: string) => p.openLink(url),
       MainButton: { text: "", show: () => {}, hide: () => {}, onClick: () => {} },
       BackButton: { show: () => {}, hide: () => {}, onClick: () => {} },
       initDataUnsafe: {
-        user: platform.tgUser || (platform.vkUser ? {
-          id: platform.vkUser.id,
-          first_name: platform.vkUser.first_name,
+        user: p.tgUser || (p.vkUser ? {
+          id: p.vkUser.id,
+          first_name: p.vkUser.first_name,
         } : undefined),
         start_param: undefined,
       },
       colorScheme: "dark" as const,
       themeParams: {},
       showPopup: (params, callback) => {
-        platform.showPopup(params).then((result) => callback?.(result));
+        p.showPopup(params);
+        callback?.("ok");
       },
       HapticFeedback: {
-        impactOccurred: (style) => platform.haptic(style),
-        notificationOccurred: (type) => platform.haptic(type),
+        impactOccurred: (style) => p.haptic(style),
+        notificationOccurred: (type) => p.haptic(type),
         selectionChanged: () => {},
       },
       isExpanded: true,
@@ -94,19 +96,19 @@ export function useTelegram() {
   })();
 
   // Build user object from either TG or VK
-  const user: TelegramUser | null = platform.tgUser || (platform.vkUser ? {
-    id: platform.vkUser.id,
-    first_name: platform.vkUser.first_name,
-    last_name: platform.vkUser.last_name,
+  const user: TelegramUser | null = p.tgUser || (p.vkUser ? {
+    id: p.vkUser.id,
+    first_name: p.vkUser.first_name,
+    last_name: p.vkUser.last_name,
   } : null);
 
   return {
     tg: tgCompat,
     user,
-    isInTelegram: platform.isInApp,
-    haptic: platform.haptic,
-    // Additional VK-specific info
-    platform: platform.platform,
-    isInVK: platform.platform === "vk",
+    isInTelegram: p.isInApp,
+    haptic: p.haptic,
+    // VK-specific info
+    platform: p.platform,
+    isInVK: p.platform === "vk",
   };
 }
