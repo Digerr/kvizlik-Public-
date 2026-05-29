@@ -17,6 +17,12 @@ import ThemesScreen from '@/components/game/ThemesScreen';
 import ChestScreen from '@/components/game/ChestScreen';
 import TournamentScreen from '@/components/game/TournamentScreen';
 import FaqScreen from '@/components/game/FaqScreen';
+import SeasonPassScreen from '@/components/game/SeasonPassScreen';
+import EventScreen from '@/components/game/EventScreen';
+import MiniGameScreen from '@/components/game/MiniGameScreen';
+import FriendsScreen from '@/components/game/FriendsScreen';
+import ClanScreen from '@/components/game/ClanScreen';
+import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
@@ -37,6 +43,12 @@ const phaseComponents: Record<string, React.ComponentType> = {
   chest: ChestScreen,
   tournament: TournamentScreen,
   faq: FaqScreen,
+  season_pass: SeasonPassScreen,
+  event: EventScreen,
+  mini_game: MiniGameScreen,
+  friends: FriendsScreen,
+  clan: ClanScreen,
+  submit_question: SubmitQuestionScreen,
 };
 
 function useDuelUrlHandler() {
@@ -72,6 +84,21 @@ function useDuelUrlHandler() {
       }
     }
   }, [joinDuel, setPhase]);
+}
+
+function useReferralHandler() {
+  const { telegramId, processReferral } = useQuizStore();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const startParam = params.get('startapp') || params.get('startApp') || window.Telegram?.WebApp?.initData?.start_param;
+    if (startParam && startParam.startsWith('ref_')) {
+      const referrerId = parseInt(startParam.replace('ref_', ''));
+      if (referrerId && referrerId !== Number(telegramId)) {
+        processReferral(referrerId);
+      }
+    }
+  }, [telegramId, processReferral]);
 }
 
 function useCloudSync() {
@@ -111,6 +138,7 @@ export default function Home() {
 
   useDuelUrlHandler();
   useCloudSync();
+  useReferralHandler();
 
   return (
     <ThemeProvider>
