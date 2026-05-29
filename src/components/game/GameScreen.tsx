@@ -3,12 +3,30 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
+import { getActiveCombo } from '@/lib/quiz-data';
 import { CATEGORIES, DUEL_REACTIONS, type Question } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
 import { Loader2, Skull } from 'lucide-react';
 import { playCorrect, playWrong, playTick, playStreak } from '@/lib/sounds';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+
+
+function ComboIndicator() {
+  const { comboStreak } = useQuizStore();
+  const combo = getActiveCombo(comboStreak);
+  if (!combo) return null;
+  return (
+    <motion.div
+      initial={{ scale: 0.5, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className="text-center py-1 px-3 rounded-lg font-bold text-sm"
+      style={{ color: combo.color, background: combo.color + '20' }}
+    >
+      {combo.emoji} {combo.name}
+    </motion.div>
+  );
+}
 
 export default function GameScreen() {
   const {
