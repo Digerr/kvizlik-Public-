@@ -92,7 +92,6 @@ export function usePlatform() {
 
   async function initVK() {
     try {
-      // Parse VK user ID from URL params
       const urlParams = new URLSearchParams(window.location.search);
       const vkUserId = urlParams.get("vk_user_id");
 
@@ -101,46 +100,59 @@ export function usePlatform() {
         setUserId(uid);
         useQuizStore.getState().setTelegramId(uid);
 
-        // Try to get user info with retries
-        const tryGetUserInfo = async (retries: number = 3): Promise<void> => {
-          for (let attempt = 0; attempt < retries; attempt++) {
-            if (isVKBridgeAvailable()) {
-              try {
-                const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
-                if (userInfo) {
-                  const firstName = userInfo.first_name || "Игрок";
-                  const lastName = userInfo.last_name || "";
-                  const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-                  const photo = userInfo.photo_100 || userInfo.photo_200 || null;
-                  setUserName(fullName);
-                  setUserPhoto(photo);
-                  setVkUser({ id: Number(vkUserId), first_name: firstName, last_name: lastName, photo_100: photo, photo_200: userInfo.photo_200 || null });
-                  if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fullName);
-                  useQuizStore.getState().setUserPhoto(photo);
-                  return;
-                }
-              } catch (e) {
-                console.warn(`VKWebAppGetUserInfo attempt ${attempt + 1} failed:`, e);
-              }
-            }
-            // Wait before retry
-            if (attempt < retries - 1) {
-              await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-            }
+        // Step 1: Wait for VK Bridge to load (it's loaded via CDN script)
+        const waitForBridge = async (maxWait: number = 5000): Promise<boolean> => {
+          const start = Date.now();
+          while (Date.now() - start < maxWait) {
+            if (isVKBridgeAvailable()) return true;
+            await new Promise(r => setTimeout(r, 100));
           }
-          // Fallback
-          const fallbackName = "Игрок VK";
-          setUserName(fallbackName);
-          if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fallbackName);
-          setVkUser({ id: Number(vkUserId), first_name: fallbackName });
+          return isVKBridgeAvailable();
         };
 
-        await tryGetUserInfo();
+        const bridgeReady = await waitForBridge();
 
-        // Init VK app
-        if (isVKBridgeAvailable()) {
-          try { await sendVK("VKWebAppInit"); } catch { }
+        // Step 2: Initialize the VK app FIRST (required before other API calls)
+        if (bridgeReady) {
+          try { await sendVK("VKWebAppInit"); } catch (e) {
+            console.warn("VKWebAppInit failed:", e);
+          }
         }
+
+        // Step 3: Get user info with retries
+        if (bridgeReady) {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
+              if (userInfo) {
+                const firstName = userInfo.first_name || "Игрок";
+                const lastName = userInfo.last_name || "";
+                const fullName = lastName ? `${firstName} ${lastName}` : firstName;
+                const photo = userInfo.photo_100 || userInfo.photo_200 || null;
+                setUserName(fullName);
+                setUserPhoto(photo);
+                setVkUser({ id: Number(vkUserId), first_name: firstName, last_name: lastName, photo_100: photo, photo_200: userInfo.photo_200 || null });
+                // Always update store with real VK name
+                useQuizStore.getState().setPlayerName(fullName);
+                useQuizStore.getState().setUserPhoto(photo);
+                console.log("[KVIZLIK] VK user info loaded:", fullName);
+                return;
+              }
+            } catch (e) {
+              console.warn(`VKWebAppGetUserInfo attempt ${attempt + 1} failed:`, e);
+            }
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+        }
+
+        // Fallback if bridge not available or all retries failed
+        const fallbackName = "Игрок VK";
+        setUserName(fallbackName);
+        if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fallbackName);
+        setVkUser({ id: Number(vkUserId), first_name: fallbackName });
+        console.warn("[KVIZLIK] VK user info fallback: using default name");
       }
     } catch (e) { console.error("VK init error:", e); }
   }
