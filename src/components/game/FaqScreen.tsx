@@ -4,9 +4,18 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuizStore } from '@/lib/quiz-store';
 import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft, ChevronDown, HelpCircle, Gamepad2, Shield, FileText, Trophy, Coins, Swords, Shield, Flame, Gift, Ticket, Dice5, Users, Castle, Frame, Link2, Calendar, ThumbsUp, Palette, ShieldCheck, Cloud, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ChevronDown, HelpCircle, Gamepad2, Shield, FileText, Trophy, Coins, Swords, Flame, Gift, Ticket, Dice5, Users, Castle, Frame, Link2, Calendar, ThumbsUp, Palette, ShieldCheck, Cloud, MessageCircle } from 'lucide-react';
 
-const FAQ_ITEMS = [
+interface FaqItem {
+  question: string;
+  answer: string;
+  emoji: string;
+  icon: any;
+  gradient: string;
+  isLegal?: boolean;
+}
+
+const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'Как играть?',
     answer: 'Выбери категорию или режим, отвечай на вопросы за отведённое время. Чем быстрее и точнее отвечаешь — тем больше очков и монет получаешь. Используй паверапы (заморозка, 50/50, подсказка) чтобы помочь себе в сложных ситуациях.',
