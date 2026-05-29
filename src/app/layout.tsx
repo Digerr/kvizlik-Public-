@@ -36,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning class="dark">
       <head>
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js" async></script>
