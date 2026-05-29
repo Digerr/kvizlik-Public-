@@ -69,7 +69,7 @@ export default function OnboardingScreen() {
   const slide = SLIDES[currentSlide];
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] flex flex-col items-center justify-center px-6 py-8 relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] flex flex-col items-center justify-center px-6 py-8 relative overflow-hidden">
       {/* Background glow */}
       <div
         className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full opacity-20 blur-3xl pointer-events-none"
