@@ -140,7 +140,7 @@ export default function FaqScreen() {
       </div>
 
       <div className="mt-4 pt-3 border-t border-white/5 text-center">
-        <p className="text-white/20 text-[10px]">КВИЗЛИК v4.1 • made by @Digerr</p>
+        <p className="text-white/20 text-[10px]">КВИЗЛИК v4.2 • made by @Digerr</p>
       </div>
     </div>
   );
