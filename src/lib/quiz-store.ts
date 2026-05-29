@@ -301,6 +301,9 @@ export interface QuizState {
   checkDailyChain: () => void;
   claimDailyChain: (day: number) => void;
 
+  // Daily reset
+  checkDailyReset: () => void;
+
   // Season actions
   checkSeason: () => void;
 
@@ -1131,6 +1134,51 @@ export const useQuizStore = create<QuizState>()(
         });
         get().syncToCloud();
         return true;
+      },
+
+      checkDailyReset: () => {
+        const state = get();
+        const today = getToday();
+
+        // Reset games played today if new day
+        if (state.gamesPlayedTodayDate && state.gamesPlayedTodayDate !== today) {
+          set({ gamesPlayedToday: 0, gamesPlayedTodayDate: today });
+        }
+
+        // Check daily chain (reset if missed a day)
+        if (state.dailyChainDate) {
+          const lastDate = new Date(state.dailyChainDate);
+          const todayDate = new Date(today);
+          const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / 86400000);
+          if (diffDays > 1) {
+            set({
+              dailyChainDay: 0,
+              dailyChainCompleted: [false, false, false, false, false, false, false],
+              dailyChainDate: today,
+            });
+          }
+        }
+        if (!state.dailyChainDate || state.dailyChainDate !== today) {
+          set({ dailyChainDate: today });
+        }
+
+        // Refresh daily tasks if new day
+        if (state.dailyTasksDate !== today) {
+          set({
+            dailyTasks: generateDailyTasks(),
+            dailyTasksDate: today,
+          });
+        }
+
+        // Reset daily streak if last play was more than 1 day ago
+        if (state.lastDailyAt && state.lastDailyAt !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().slice(0, 10);
+          if (state.lastDailyAt !== yesterdayStr) {
+            set({ dailyStreak: 0 });
+          }
+        }
       },
 
       refreshDailyTasks: () => {
