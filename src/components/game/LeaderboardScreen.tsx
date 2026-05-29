@@ -69,10 +69,11 @@ export default function LeaderboardScreen() {
     avatarId: avatarId,
     league: playerLeague.id,
     isPlayer: true,
-    telegramId: telegramId ? Number(telegramId) : undefined,
+    telegramId: telegramId || undefined,
   };
 
-  const cloudEntries = leaderboard.map(e => ({ ...e, isPlayer: e.telegramId === (telegramId ? Number(telegramId) : -1) }));
+  // Match player by string ID (works for both TG numeric and VK prefixed IDs)
+  const cloudEntries = leaderboard.map(e => ({ ...e, isPlayer: String(e.telegramId) === String(telegramId) }));
   const playerInCloud = cloudEntries.some(e => e.isPlayer);
   const allEntries = playerInCloud
     ? cloudEntries.sort((a, b) => b.score - a.score)
