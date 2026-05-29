@@ -5,7 +5,7 @@ import { useQuizStore } from '@/lib/quiz-store';
 import { AVATARS, LEAGUES, ACHIEVEMENTS, THEMES } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
 import { useEffect, useState } from 'react';
-import { Trophy, Star, ShoppingBag, BarChart3, User, Target, ChevronRight, Volume2, VolumeX, Swords, Palette, Crown } from 'lucide-react';
+import { Volume2, VolumeX, Palette, Crown } from 'lucide-react';
 import { isMuted, toggleMute } from '@/lib/sounds';
 
 export default function HomeScreen() {
@@ -21,6 +21,9 @@ export default function HomeScreen() {
     dailyTasks,
     newAchievements,
     currentTheme,
+    friendList,
+    clanId,
+    seasonScore,
     setPhase,
     refreshDailyTasks,
   } = useQuizStore();
@@ -56,6 +59,7 @@ export default function HomeScreen() {
   const displayName = playerName || user?.first_name || 'Игрок';
   const unclaimedTask = dailyTasks.find(t => t.progress >= t.target && !t.claimed);
   const totalPowerUps = powerUps.freeze + powerUps.fiftyFifty + powerUps.hint;
+  const friendCount = friendList?.length || 0;
 
   return (
     <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-6 flex flex-col">
@@ -194,121 +198,175 @@ export default function HomeScreen() {
         </motion.button>
       </div>
 
-      {/* Menu Buttons */}
+      {/* Menu Row 1: Tasks + Achievements */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="grid grid-cols-2 gap-3 mb-4"
+        className="grid grid-cols-3 gap-2 mb-2"
       >
         <button
           onClick={() => { haptic('light'); setPhase('daily'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-orange-500/20 flex items-center justify-center text-lg">📋</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Задания</p>
-            <p className="text-white/40 text-[10px]">
-              {unclaimedTask ? 'Есть награда!' : `${dailyTasks.filter(t => t.claimed).length}/${dailyTasks.length}`}
-            </p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-orange-500/20 flex items-center justify-center text-base">📋</div>
+          <p className="text-white text-xs font-medium">Задания</p>
+          <p className="text-white/40 text-[9px]">
+            {unclaimedTask ? '🎁 Награда!' : `${dailyTasks.filter(t => t.claimed).length}/${dailyTasks.length}`}
+          </p>
         </button>
 
         <button
           onClick={() => { haptic('light'); setPhase('achievements'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-yellow-500/20 flex items-center justify-center text-lg">🏆</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Достижения</p>
-            <p className="text-white/40 text-[10px]">Собирай награды</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-yellow-500/20 flex items-center justify-center text-base">🏆</div>
+          <p className="text-white text-xs font-medium">Достижения</p>
+          <p className="text-white/40 text-[9px]">Собирай</p>
         </button>
 
         <button
-          onClick={() => { haptic('light'); setPhase('shop'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          onClick={() => { haptic('light'); setPhase('season_pass'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center text-lg">🛒</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Магазин</p>
-            <p className="text-white/40 text-[10px]">Бонусы и аватары</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => { haptic('light'); setPhase('leaderboard'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
-        >
-          <div className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center text-lg">📊</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Рейтинг</p>
-            <p className="text-white/40 text-[10px]">Топ игроков</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center text-base">🎖️</div>
+          <p className="text-white text-xs font-medium">Сезон</p>
+          <p className="text-white/40 text-[9px]">{seasonScore || 0} XP</p>
         </button>
       </motion.div>
 
-      {/* Second row: Themes + Tournament */}
+      {/* Menu Row 2: Shop + Leaderboard + Friends */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.32 }}
-        className="grid grid-cols-2 gap-3 mb-4"
+        className="grid grid-cols-3 gap-2 mb-2"
       >
         <button
-          onClick={() => { haptic('light'); setPhase('themes'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          onClick={() => { haptic('light'); setPhase('shop'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-pink-500/20 flex items-center justify-center text-lg">
-            <Palette className="w-4 h-4 text-pink-400" />
-          </div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Темы</p>
-            <p className="text-white/40 text-[10px]">{activeTheme.emoji} {activeTheme.name}</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-purple-500/20 flex items-center justify-center text-base">🛒</div>
+          <p className="text-white text-xs font-medium">Магазин</p>
+          <p className="text-white/40 text-[9px]">Бонусы</p>
         </button>
 
         <button
-          onClick={() => { haptic('light'); setPhase('tournament'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          onClick={() => { haptic('light'); setPhase('leaderboard'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center text-lg">
-            <Crown className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Турнир</p>
-            <p className="text-white/40 text-[10px]">Еженедельный</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-blue-500/20 flex items-center justify-center text-base">📊</div>
+          <p className="text-white text-xs font-medium">Рейтинг</p>
+          <p className="text-white/40 text-[9px]">Топ</p>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('friends'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-teal-500/20 flex items-center justify-center text-base">👥</div>
+          <p className="text-white text-xs font-medium">Друзья</p>
+          <p className="text-white/40 text-[9px]">{friendCount} друз.</p>
         </button>
       </motion.div>
 
-      {/* Third row: FAQ + Profile */}
+      {/* Menu Row 3: Themes + Tournament + Clan */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.34 }}
-        className="grid grid-cols-2 gap-3 mb-4"
+        className="grid grid-cols-3 gap-2 mb-2"
+      >
+        <button
+          onClick={() => { haptic('light'); setPhase('themes'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-pink-500/20 flex items-center justify-center text-base">
+            <Palette className="w-4 h-4 text-pink-400" />
+          </div>
+          <p className="text-white text-xs font-medium">Темы</p>
+          <p className="text-white/40 text-[9px]">{activeTheme.emoji} {activeTheme.name}</p>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('tournament'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center text-base">
+            <Crown className="w-4 h-4 text-amber-400" />
+          </div>
+          <p className="text-white text-xs font-medium">Турнир</p>
+          <p className="text-white/40 text-[9px]">Еженед.</p>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('clan'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/20 flex items-center justify-center text-base">🏰</div>
+          <p className="text-white text-xs font-medium">Клан</p>
+          <p className="text-white/40 text-[9px]">{clanId ? clanId : 'Создай'}</p>
+        </button>
+      </motion.div>
+
+      {/* Menu Row 4: Mini-games + Events + Submit */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.36 }}
+        className="grid grid-cols-3 gap-2 mb-2"
+      >
+        <button
+          onClick={() => { haptic('light'); setPhase('mini_game'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center text-base">🎯</div>
+          <p className="text-white text-xs font-medium">Мини-игры</p>
+          <p className="text-white/40 text-[9px]">Правда/Ложь</p>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('event'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-rose-500/20 flex items-center justify-center text-base">🎪</div>
+          <p className="text-white text-xs font-medium">Ивенты</p>
+          <p className="text-white/40 text-[9px]">Спец.режим</p>
+        </button>
+
+        <button
+          onClick={() => { haptic('light'); setPhase('submit_question'); }}
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+        >
+          <div className="w-8 h-8 rounded-xl bg-lime-500/20 flex items-center justify-center text-base">✍️</div>
+          <p className="text-white text-xs font-medium">Вопросы</p>
+          <p className="text-white/40 text-[9px]">Предложи</p>
+        </button>
+      </motion.div>
+
+      {/* Menu Row 5: FAQ + Profile */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.38 }}
+        className="grid grid-cols-2 gap-2 mb-4"
       >
         <button
           onClick={() => { haptic('light'); setPhase('faq'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center text-lg">❓</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">FAQ</p>
-            <p className="text-white/40 text-[10px]">Информация</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-cyan-500/20 flex items-center justify-center text-base">❓</div>
+          <p className="text-white text-xs font-medium">FAQ</p>
+          <p className="text-white/40 text-[9px]">Информация</p>
         </button>
 
         <button
           onClick={() => { haptic('light'); setPhase('profile'); }}
-          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-3 flex items-center gap-2.5 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
+          className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-2.5 flex flex-col items-center gap-1 hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all"
         >
-          <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center text-lg">👤</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="text-white text-sm font-medium">Профиль</p>
-            <p className="text-white/40 text-[10px]">Статистика</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-green-500/20 flex items-center justify-center text-base">👤</div>
+          <p className="text-white text-xs font-medium">Профиль</p>
+          <p className="text-white/40 text-[9px]">Статистика</p>
         </button>
       </motion.div>
 
