@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
 import { LEAGUES, getLeagueByScore, getLeagueProgress, ACHIEVEMENTS } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
+import { usePlatform } from '@/hooks/use-platform';
 import { Trophy, Home, RotateCcw, Share2, Swords, Skull } from 'lucide-react';
 import { playWin, playCoin } from '@/lib/sounds';
 import { useEffect, useState, useCallback } from 'react';
@@ -25,9 +26,10 @@ export default function ResultScreen() {
     setPhase,
     finishDuelCreator,
     finishDuelChallenger,
+    telegramId,
   } = useQuizStore();
 
-  const { haptic, tg, isInTelegram } = useTelegram();
+  const { haptic, platform, isInVK, shareDuel, share, getReferralLink } = useTelegram();
 
   const correctCount = answers.filter(a => a.isCorrect).length;
   const totalQuestions = questions.length;
@@ -75,26 +77,39 @@ export default function ResultScreen() {
 
   const newXPAchievements = newAchievements.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
 
-  const shareText = isSurvival
-    ? `🧠 КВИЗЛИК — Выживание\n\nЯ продержался ${correctCount} вопросов!\n💀 Рекорд: ${survivalRecord}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`
-    : `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
+  // Platform-aware referral URL
+  const referralUrl = getReferralLink();
 
-  const handleShare = () => {
+  // Share message — works for both TG and VK
+  const shareMessage = isSurvival
+    ? `🧠 КВИЗЛИК — Выживание!\n\n📊 Счёт: ${roundScore}\n💀 Продержался: ${correctCount}\n🔥 Рекорд: ${survivalRecord}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`
+    : `🧠 КВИЗЛИК — Мой результат!\n\n📊 Счёт: ${roundScore}\n✅ Правильных: ${correctCount}/${totalQuestions}\n🔥 Серия: ${bestStreak}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`;
+
+  // Share results — cross-platform
+  const handleShareResult = () => {
     haptic('light');
-    if (isInTelegram && tg) {
-      try {
-        tg.showPopup({
-          title: 'Поделиться результатом',
-          message: shareText,
-          buttons: [{ type: 'ok' }],
-        });
-      } catch {
-        navigator.clipboard.writeText(shareText);
-      }
-    } else {
-      navigator.clipboard.writeText(shareText);
-    }
+    share(referralUrl, shareMessage);
   };
+
+  // Copy result text to clipboard
+  const handleCopyResult = () => {
+    haptic('light');
+    const text = isSurvival
+      ? `🧠 КВИЗЛИК — Выживание\n\nЯ продержался ${correctCount} вопросов!\n💀 Рекорд: ${survivalRecord}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`
+      : `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  // Share duel link — cross-platform
+  const handleShareDuel = () => {
+    if (!duelShareLink) return;
+    haptic('light');
+    const text = '⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠';
+    shareDuel(duelShareLink, text);
+  };
+
+  // Share button label depends on platform
+  const shareButtonLabel = isInVK ? 'Поделиться в VK' : 'Поделиться результатом';
 
   return (
     <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-6 flex flex-col">
@@ -249,24 +264,22 @@ export default function ResultScreen() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               whileTap={{ scale: 0.97 }}
+              onClick={handleShareDuel}
+              className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+            >
+              <Swords className="w-4 h-4" /> {isInVK ? 'Поделиться дуэлью в VK' : 'Поделиться дуэлью'}
+            </motion.button>
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => {
                 haptic('light');
-                const text = `⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠\n${duelShareLink}`;
-                if (isInTelegram && tg) {
-                  try {
-                    tg.openTelegramLink(
-                      `https://t.me/share/url?url=${encodeURIComponent(duelShareLink)}&text=${encodeURIComponent('⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠')}`
-                    );
-                  } catch {
-                    navigator.clipboard.writeText(text);
-                  }
-                } else {
-                  navigator.clipboard.writeText(text);
-                }
+                navigator.clipboard.writeText(duelShareLink).catch(() => {});
               }}
-              className="w-full bg-[#2AABEE] hover:bg-[#229ED9] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#2AABEE]/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
-              Поделиться в Telegram
+              <Share2 className="w-4 h-4" /> Скопировать ссылку
             </motion.button>
             <motion.button
               initial={{ opacity: 0, y: 10 }}
@@ -296,16 +309,27 @@ export default function ResultScreen() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.55 }}
               whileTap={{ scale: 0.97 }}
-              onClick={handleShare}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              onClick={handleShareResult}
+              className="w-full bg-gradient-to-r from-[#2AABEE] to-[#229ED9] hover:from-[#2AABEE] hover:to-[#229ED9] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#2AABEE]/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
             >
-              <Share2 className="w-4 h-4" /> Поделиться
+              <Share2 className="w-4 h-4" /> {shareButtonLabel}
             </motion.button>
 
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleCopyResult}
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <Share2 className="w-4 h-4" /> Скопировать результат
+            </motion.button>
+
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.65 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
               className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
