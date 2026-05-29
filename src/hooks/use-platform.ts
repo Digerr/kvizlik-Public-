@@ -1,21 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useQuizStore } from "@/lib/quiz-store";
-
-// ===== VK Bridge (lazy-loaded) =====
-let vkBridge: any = null;
-
-async function getVKBridge() {
-  if (vkBridge) return vkBridge;
-  try {
-    const mod = await import("@vkontakte/vk-bridge");
-    vkBridge = mod.default;
-    return vkBridge;
-  } catch {
-    return null;
-  }
-}
 
 // ===== Platform types =====
 export type Platform = "telegram" | "vk" | "web";
@@ -26,250 +12,112 @@ interface PlatformAdapter {
   userName: string | null;
   isInApp: boolean;
   haptic: (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => void;
-  share: (url: string, text: string) => Promise<void>;
-  showPopup: (params: { title?: string; message: string; buttons?: any[] }) => Promise<string>;
+  share: (url: string, text: string) => void;
+  showPopup: (params: { title?: string; message: string; buttons?: any[] }) => void;
   openLink: (url: string) => void;
   ready: () => void;
   expand: () => void;
 }
 
-// ===== VK User type =====
-interface VKUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  screen_name?: string;
-  photo_100?: string;
-}
-
 // ===== Detect platform =====
 export function detectPlatform(): Platform {
   if (typeof window === "undefined") return "web";
-  const url = new URL(window.location.href);
-  // VK passes vk_user_id in URL params
-  if (url.searchParams.has("vk_user_id") || url.searchParams.has("vk_platform")) return "vk";
-  // Telegram has window.Telegram.WebApp
-  if (window.Telegram?.WebApp?.initDataUnsafe) return "telegram";
+  try {
+    const url = new URL(window.location.href);
+    // VK passes vk_user_id or vk_platform in URL params
+    if (url.searchParams.has("vk_user_id") || url.searchParams.has("vk_platform")) return "vk";
+    // Telegram has window.Telegram.WebApp with initData
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) return "telegram";
+    // Also check for Telegram initData (even without user, it's TG)
+    if (window.Telegram?.WebApp?.initData) return "telegram";
+  } catch { /* ignore */ }
   return "web";
 }
 
-// ===== VK Adapter =====
-function createVKAdapter(): PlatformAdapter {
-  let vkUser: VKUser | null = null;
-
-  return {
-    platform: "vk",
-    userId: null,
-    userName: null,
-    isInApp: true,
-
-    haptic: async (type) => {
-      const bridge = await getVKBridge();
-      if (!bridge) return;
-      try {
-        if (type === "success" || type === "warning" || type === "error") {
-          bridge.send("VKWebAppTapticNotificationOccurred", { type });
-        } else {
-          const style = type === "light" ? "light" : type === "medium" ? "medium" : "heavy";
-          bridge.send("VKWebAppTapticImpactOccurred", { style });
-        }
-      } catch { /* ignore */ }
-    },
-
-    share: async (url, text) => {
-      const bridge = await getVKBridge();
-      if (!bridge) { window.open(url, "_blank"); return; }
-      try {
-        await bridge.send("VKWebAppShare", { link: url });
-      } catch { window.open(url, "_blank"); }
-    },
-
-    showPopup: async (params) => {
-      const bridge = await getVKBridge();
-      if (!bridge) {
-        // Fallback to browser confirm
-        const ok = confirm(params.message);
-        return ok ? "ok" : "cancel";
+// ===== VK Bridge helper (uses global from CDN script) =====
+function sendVK(method: string, params?: Record<string, any>): Promise<any> {
+  return new Promise((resolve, reject) => {
+    try {
+      // Use the global vkBridge object from the CDN script
+      const bridge = (window as any).vkBridge || (window as any).VKBridge;
+      if (bridge && typeof bridge.send === 'function') {
+        bridge.send(method, params).then(resolve).catch(reject);
+      } else {
+        reject(new Error('VK Bridge not available'));
       }
-      try {
-        const result = await bridge.send("VKWebAppShowMessageBox", {
-          title: params.title || "",
-          message: params.message,
-          buttons: params.buttons?.map((b: any) => ({
-            type: b.type === "ok" ? "ok" : b.type === "cancel" ? "cancel" : "default",
-            title: b.text || "OK",
-          })) || [{ type: "ok", title: "OK" }],
-        });
-        return result.result ? "ok" : "cancel";
-      } catch {
-        return "cancel";
-      }
-    },
-
-    openLink: (url) => {
-      window.open(url, "_blank");
-    },
-
-    ready: async () => {
-      const bridge = await getVKBridge();
-      if (bridge) bridge.send("VKWebAppInit");
-    },
-
-    expand: async () => {
-      const bridge = await getVKBridge();
-      if (bridge) {
-        try { bridge.send("VKWebAppResizeWindow", { width: 350, height: 800 }); } catch { /* ignore */ }
-      }
-    },
-  };
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
-// ===== Telegram Adapter =====
-function createTelegramAdapter(): PlatformAdapter {
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : null;
-  const tgUser = tg?.initDataUnsafe?.user || null;
-
-  return {
-    platform: "telegram",
-    userId: tgUser ? String(tgUser.id) : null,
-    userName: tgUser?.first_name || null,
-    isInApp: !!tg,
-
-    haptic: (type) => {
-      if (!tg) return;
-      if (type === "success" || type === "error" || type === "warning") {
-        tg.HapticFeedback.notificationOccurred(type);
-      } else {
-        tg.HapticFeedback.impactOccurred(type);
-      }
-    },
-
-    share: async (url, text) => {
-      if (tg) {
-        tg.openTelegramLink(url);
-      } else {
-        window.open(url, "_blank");
-      }
-    },
-
-    showPopup: async (params) => {
-      if (tg) {
-        return new Promise<string>((resolve) => {
-          tg!.showPopup({
-            title: params.title,
-            message: params.message,
-            buttons: params.buttons,
-          }, (buttonId: string) => resolve(buttonId || "ok"));
-        });
-      }
-      const ok = confirm(params.message);
-      return ok ? "ok" : "cancel";
-    },
-
-    openLink: (url) => {
-      if (tg) {
-        tg.openTelegramLink(url);
-      } else {
-        window.open(url, "_blank");
-      }
-    },
-
-    ready: () => {
-      tg?.ready();
-    },
-
-    expand: () => {
-      tg?.expand();
-    },
-  };
-}
-
-// ===== Web Adapter (fallback) =====
-function createWebAdapter(): PlatformAdapter {
-  return {
-    platform: "web",
-    userId: null,
-    userName: null,
-    isInApp: false,
-
-    haptic: () => {},
-    share: async (url) => { window.open(url, "_blank"); },
-    showPopup: async (params) => { const ok = confirm(params.message); return ok ? "ok" : "cancel"; },
-    openLink: (url) => { window.open(url, "_blank"); },
-    ready: () => {},
-    expand: () => {},
-  };
+function isVKBridgeAvailable(): boolean {
+  try {
+    const bridge = (window as any).vkBridge || (window as any).VKBridge;
+    return bridge && typeof bridge.send === 'function';
+  } catch {
+    return false;
+  }
 }
 
 // ===== Main hook =====
-export function usePlatform(): PlatformAdapter & {
-  vkUser: VKUser | null;
-  tgUser: any | null;
-} {
-  const [adapter, setAdapter] = useState<PlatformAdapter>(createWebAdapter());
-  const [vkUser, setVkUser] = useState<VKUser | null>(null);
+export function usePlatform() {
+  const [platform, setPlatform] = useState<Platform>("web");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [isInApp, setIsInApp] = useState(false);
+  const [vkUser, setVkUser] = useState<{ id: number; first_name: string; last_name?: string } | null>(null);
   const [tgUser, setTgUser] = useState<any | null>(null);
   const { setTelegramId, setPlayerName, playerName } = useQuizStore();
 
   useEffect(() => {
-    const platform = detectPlatform();
+    const detected = detectPlatform();
+    setPlatform(detected);
 
-    if (platform === "vk") {
-      const vkAdapter = createVKAdapter();
+    if (detected === "vk") {
+      setIsInApp(true);
+      initVK();
+    } else if (detected === "telegram") {
+      setIsInApp(true);
+      initTelegram();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      // Get VK user info
-      (async () => {
-        const bridge = await getVKBridge();
-        if (bridge) {
-          try {
-            bridge.send("VKWebAppInit");
+  async function initVK() {
+    try {
+      // Parse VK user from URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const vkUserId = urlParams.get("vk_user_id");
+      const vkUserName = urlParams.get("vk_user_name");
 
-            // Parse VK user from URL params (VK sends them in the URL)
-            const urlParams = new URLSearchParams(window.location.search);
-            const vkUserId = urlParams.get("vk_user_id");
-            const vkUserName = urlParams.get("vk_user_name");
+      if (vkUserId) {
+        const uid = `vk_${vkUserId}`;
+        setUserId(uid);
+        useQuizStore.getState().setTelegramId(uid);
 
-            if (vkUserId) {
-              vkAdapter.userId = `vk_${vkUserId}`;
-              useQuizStore.getState().setTelegramId(`vk_${vkUserId}`);
-
-              if (!playerName && vkUserName) {
-                useQuizStore.getState().setPlayerName(decodeURIComponent(vkUserName));
-              } else if (!playerName) {
-                useQuizStore.getState().setPlayerName("Игрок VK");
-              }
-
-              setVkUser({
-                id: Number(vkUserId),
-                first_name: vkUserName ? decodeURIComponent(vkUserName) : "Игрок VK",
-              });
-            }
-
-            // Try to get more user info via VK Bridge
-            try {
-              const userInfo = await bridge.send("VKWebAppGetUserInfo");
-              if (userInfo) {
-                vkAdapter.userId = `vk_${userInfo.id}`;
-                vkAdapter.userName = userInfo.first_name;
-                useQuizStore.getState().setTelegramId(`vk_${userInfo.id}`);
-                if (!playerName) {
-                  useQuizStore.getState().setPlayerName(userInfo.first_name);
-                }
-                setVkUser(userInfo);
-              }
-            } catch { /* VK Bridge GetUserInfo not available */ }
-
-          } catch (e) {
-            console.error("VK Bridge init failed:", e);
-          }
+        const name = vkUserName ? decodeURIComponent(vkUserName) : "Игрок VK";
+        setUserName(name);
+        if (!useQuizStore.getState().playerName) {
+          useQuizStore.getState().setPlayerName(name);
         }
+        setVkUser({ id: Number(vkUserId), first_name: name });
+      }
 
-        setAdapter(vkAdapter);
-      })();
-    } else if (platform === "telegram") {
-      const tgAdapter = createTelegramAdapter();
+      // Initialize VK Bridge (from CDN)
+      if (isVKBridgeAvailable()) {
+        try {
+          await sendVK("VKWebAppInit");
+        } catch { /* VK init failed, continue anyway */ }
+      }
+    } catch (e) {
+      console.error("VK init error:", e);
+    }
+  }
+
+  function initTelegram() {
+    try {
       const webApp = window.Telegram?.WebApp;
-
       if (webApp) {
         webApp.ready();
         webApp.expand();
@@ -277,18 +125,123 @@ export function usePlatform(): PlatformAdapter & {
         const user = webApp.initDataUnsafe?.user;
         if (user) {
           setTgUser(user);
-          useQuizStore.getState().setTelegramId(String(user.id));
-          if (!playerName && user.first_name) {
+          const tid = String(user.id);
+          setUserId(tid);
+          useQuizStore.getState().setTelegramId(tid);
+          if (!useQuizStore.getState().playerName && user.first_name) {
             useQuizStore.getState().setPlayerName(user.first_name);
           }
+          setUserName(user.first_name);
         }
       }
-
-      setAdapter(tgAdapter);
-    } else {
-      setAdapter(createWebAdapter());
+    } catch (e) {
+      console.error("Telegram init error:", e);
     }
-  }, []);
+  }
+
+  // Haptic feedback
+  const haptic = (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
+    try {
+      if (platform === "vk" && isVKBridgeAvailable()) {
+        if (type === "success" || type === "warning" || type === "error") {
+          sendVK("VKWebAppTapticNotificationOccurred", { type }).catch(() => {});
+        } else {
+          sendVK("VKWebAppTapticImpactOccurred", { style: type }).catch(() => {});
+        }
+      } else if (platform === "telegram" && window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        if (type === "success" || type === "error" || type === "warning") {
+          tg.HapticFeedback.notificationOccurred(type);
+        } else {
+          tg.HapticFeedback.impactOccurred(type);
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
+  // Share
+  const share = (url: string, text: string) => {
+    try {
+      if (platform === "vk" && isVKBridgeAvailable()) {
+        sendVK("VKWebAppShare", { link: url }).catch(() => {
+          navigator.clipboard?.writeText(text + "\n" + url);
+        });
+      } else if (platform === "telegram" && window.Telegram?.WebApp) {
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+        window.Telegram.WebApp.openTelegramLink(shareUrl);
+      } else {
+        navigator.clipboard?.writeText(text + "\n" + url);
+      }
+    } catch {
+      navigator.clipboard?.writeText(text + "\n" + url);
+    }
+  };
+
+  // Show popup
+  const showPopup = (params: { title?: string; message: string; buttons?: any[] }) => {
+    try {
+      if (platform === "vk" && isVKBridgeAvailable()) {
+        sendVK("VKWebAppShowMessageBox", {
+          title: params.title || "",
+          message: params.message,
+          buttons: params.buttons?.map((b: any) => ({
+            type: b.type === "ok" ? "ok" : b.type === "cancel" ? "cancel" : "default",
+            title: b.text || "OK",
+          })) || [{ type: "ok", title: "OK" }],
+        }).catch(() => {
+          alert(params.message);
+        });
+      } else if (platform === "telegram" && window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showPopup(params);
+      } else {
+        alert(params.message);
+      }
+    } catch {
+      alert(params.message);
+    }
+  };
+
+  // Open link
+  const openLink = (url: string) => {
+    try {
+      if (platform === "telegram" && window.Telegram?.WebApp) {
+        window.Telegram.WebApp.openTelegramLink(url);
+      } else {
+        window.open(url, "_blank");
+      }
+    } catch {
+      window.open(url, "_blank");
+    }
+  };
+
+  // Ready
+  const ready = () => {
+    if (platform === "telegram" && window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready();
+    } else if (platform === "vk" && isVKBridgeAvailable()) {
+      sendVK("VKWebAppInit").catch(() => {});
+    }
+  };
+
+  // Expand
+  const expand = () => {
+    if (platform === "telegram" && window.Telegram?.WebApp) {
+      window.Telegram.WebApp.expand();
+    }
+  };
+
+  const adapter: PlatformAdapter = {
+    platform,
+    userId,
+    userName,
+    isInApp,
+    haptic,
+    share,
+    showPopup,
+    openLink,
+    ready,
+    expand,
+  };
 
   return { ...adapter, vkUser, tgUser };
 }
