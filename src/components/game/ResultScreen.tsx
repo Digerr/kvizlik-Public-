@@ -29,6 +29,7 @@ export default function ResultScreen() {
   } = useQuizStore();
 
   const { haptic, tg, isInTelegram, platform, isInVK } = useTelegram();
+  const pShare = usePlatform().share;
 
   const correctCount = answers.filter(a => a.isCorrect).length;
   const totalQuestions = questions.length;
@@ -87,28 +88,9 @@ export default function ResultScreen() {
     : `🧠 КВИЗЛИК — Мой результат!\n\n📊 Счёт: ${roundScore}\n✅ Правильных: ${correctCount}/${totalQuestions}\n🔥 Серия: ${bestStreak}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`;
 
   // Share results — works on Telegram, VK, and web
-  const handleShareToTelegram = async () => {
+  const handleShareToTelegram = () => {
     haptic('light');
-    if (isInVK) {
-      // VK share
-      try {
-        const vkBridge = (await import('@vkontakte/vk-bridge')).default;
-        await vkBridge.send('VKWebAppShare', { link: referralUrl });
-      } catch {
-        // Fallback: copy to clipboard
-        navigator.clipboard?.writeText(shareMessage + '\n' + referralUrl);
-      }
-    } else if (isInTelegram && tg) {
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent(shareMessage)}`;
-      try {
-        tg.openTelegramLink(shareUrl);
-      } catch {
-        window.open(shareUrl, '_blank');
-      }
-    } else {
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent(shareMessage)}`;
-      window.open(shareUrl, '_blank');
-    }
+    pShare(referralUrl, shareMessage);
   };
 
   // Legacy share handler (clipboard fallback)
@@ -286,16 +268,11 @@ export default function ResultScreen() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               whileTap={{ scale: 0.97 }}
-              onClick={async () => {
+              onClick={() => {
                 haptic('light');
                 const text = `⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠\n${duelShareLink}`;
                 if (isInVK) {
-                  try {
-                    const vkBridge = (await import('@vkontakte/vk-bridge')).default;
-                    await vkBridge.send('VKWebAppShare', { link: duelShareLink });
-                  } catch {
-                    navigator.clipboard?.writeText(text);
-                  }
+                  pShare(duelShareLink, text);
                 } else if (isInTelegram && tg) {
                   try {
                     tg.openTelegramLink(
@@ -374,4 +351,5 @@ export default function ResultScreen() {
     </div>
   );
 }
+
 
