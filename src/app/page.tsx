@@ -375,14 +375,47 @@ function ReminderBanner({
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { currentTheme } = useQuizStore();
   const theme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
+  const platform = detectPlatform();
 
+  // Detect and apply platform theme (light/dark)
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--theme-bg', theme.colors.bg);
-    root.style.setProperty('--theme-card', theme.colors.card);
-    root.style.setProperty('--theme-card-hover', theme.colors.cardHover);
-    root.style.setProperty('--theme-accent-from', theme.colors.accentFrom);
-    root.style.setProperty('--theme-accent-to', theme.colors.accentTo);
+
+    // Check Telegram theme
+    if (platform === 'telegram' && window.Telegram?.WebApp) {
+      const tgTheme = window.Telegram.WebApp.colorScheme;
+      if (tgTheme === 'light') {
+        root.classList.remove('dark');
+        root.classList.add('light');
+      } else {
+        root.classList.remove('light');
+        root.classList.add('dark');
+      }
+    }
+    // VK theme is handled by use-platform.ts VKWebAppUpdateConfig listener
+    // Web defaults to dark
+  }, [platform]);
+
+  // Apply theme colors (override with light variants if in light mode)
+  useEffect(() => {
+    const root = document.documentElement;
+    const isLight = root.classList.contains('light');
+
+    if (isLight) {
+      // Light mode: use light-appropriate colors
+      root.style.setProperty('--theme-bg', '#f5f3ff');
+      root.style.setProperty('--theme-card', '#ffffff');
+      root.style.setProperty('--theme-card-hover', '#f0ecff');
+      root.style.setProperty('--theme-accent-from', theme.colors.accentFrom);
+      root.style.setProperty('--theme-accent-to', theme.colors.accentTo);
+    } else {
+      // Dark mode: use theme colors as-is
+      root.style.setProperty('--theme-bg', theme.colors.bg);
+      root.style.setProperty('--theme-card', theme.colors.card);
+      root.style.setProperty('--theme-card-hover', theme.colors.cardHover);
+      root.style.setProperty('--theme-accent-from', theme.colors.accentFrom);
+      root.style.setProperty('--theme-accent-to', theme.colors.accentTo);
+    }
     if (theme.colors.textAccent) {
       root.style.setProperty('--theme-text-accent', theme.colors.textAccent);
     } else {
@@ -422,6 +455,34 @@ export default function Home() {
   useDuelUrlHandler();
   const { gamesPlayedToday, showReminder } = useCloudSync();
   useReferralHandler();
+
+  // VK Pull-to-refresh: reload cloud data when user pulls to refresh
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const platform = detectPlatform();
+    if (platform === 'vk') {
+      try {
+        const bridge = (window as any).vkBridge || (window as any).VKBridge;
+        if (bridge && typeof bridge.subscribe === 'function') {
+          const handler = (event: any) => {
+            if (event?.type === 'VKWebAppRefresh') {
+              // Refresh cloud data
+              const store = useQuizStore.getState();
+              if (store.telegramId && store.isCloudLoaded) {
+                store.syncFromCloud();
+              }
+              store.refreshDailyTasks();
+              store.checkDailyReset();
+            }
+          };
+          bridge.subscribe(handler);
+          return () => {
+            try { bridge.unsubscribe(handler); } catch {}
+          };
+        }
+      } catch {}
+    }
+  }, []);
 
   const { showBanner, motivationalMessage, handleBannerPlay, dismissBanner } =
     useNotificationReminder(showReminder);
