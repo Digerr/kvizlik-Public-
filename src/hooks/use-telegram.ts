@@ -77,6 +77,7 @@ export function useTelegram() {
         user: p.tgUser || (p.vkUser ? {
           id: p.vkUser.id,
           first_name: p.vkUser.first_name,
+          last_name: p.vkUser.last_name,
         } : undefined),
         start_param: undefined,
       },
@@ -105,10 +106,21 @@ export function useTelegram() {
   return {
     tg: tgCompat,
     user,
-    isInTelegram: p.isInApp,
     haptic: p.haptic,
-    // VK-specific info
+    // Platform info
     platform: p.platform,
     isInVK: p.platform === "vk",
+    isInTelegram: p.platform === "telegram",
+    // VK-specific
+    vkUser: p.vkUser,
+    tgUser: p.tgUser,
+    // Cross-platform helpers
+    share: p.share,
+    shareDuel: p.shareDuel,
+    showPopup: p.showPopup,
+    userPhoto: p.userPhoto,
+    getReferralLink: p.getReferralLink,
+    // Backward compat: isInTelegram was previously p.isInApp which was true for both
+    // Keep it as true for TG only to not break existing logic
   };
 }
