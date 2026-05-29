@@ -11,6 +11,7 @@ export interface Question {
 export interface Category {
   id: string;
   name: string;
+  desc: string;
   emoji: string;
   color: string;
   description: string;
@@ -155,7 +156,7 @@ export const AVATARS: Avatar[] = [
   // New rare avatars
   { id: "ninja", name: "Ниндзя", emoji: "🥷", price: 100, rarity: "rare" },
   { id: "ghost", name: "Призрак", emoji: "👻", price: 150, rarity: "rare" },
-  { id: "pirate", name: "Золотая лихорадка", emoji: "🏴‍☠️", price: 180, rarity: "rare" },
+  { id: "pirate", name: "Золотая лихорадка", desc: "Тёплые золотистые оттенки", emoji: "🏴‍☠️", price: 180, rarity: "rare" },
   // New epic avatars
   { id: "astronaut", name: "Космонавт", emoji: "🧑‍🚀", price: 350, rarity: "epic" },
   { id: "vampire", name: "Вампир", emoji: "🧛", price: 400, rarity: "epic" },
@@ -226,7 +227,7 @@ export interface ThemeDef {
 export const THEMES: ThemeDef[] = [
   {
     id: "neon",
-    name: "Неоновая ночь",
+    name: "Неоновая ночь", desc: "Тёмный фон с неоновым свечением",
     emoji: "🌙",
     unlockCondition: "default",
     unlockValue: 0,
@@ -240,7 +241,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "retro",
-    name: "Пиксель-бар",
+    name: "Пиксель-бар", desc: "Ретро-стиль аркадных автоматов",
     emoji: "🕹️",
     unlockCondition: "level",
     unlockValue: 5,
@@ -255,7 +256,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "cosmos",
-    name: "Глубокий космос",
+    name: "Глубокий космос", desc: "Тёмно-синий с космическими тонами",
     emoji: "🌌",
     unlockCondition: "level",
     unlockValue: 10,
@@ -269,7 +270,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "candy",
-    name: "Клубничный сон",
+    name: "Клубничный сон", desc: "Мягкие розовые и сладкие тона",
     emoji: "🍬",
     unlockCondition: "level",
     unlockValue: 15,
@@ -283,7 +284,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "pirate",
-    name: "Золотая лихорадка",
+    name: "Золотая лихорадка", desc: "Тёплые золотистые оттенки",
     emoji: "🏴‍☠️",
     unlockCondition: "coins",
     unlockValue: 500,
@@ -297,7 +298,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "fire",
-    name: "Вулканический",
+    name: "Вулканический", desc: "Огненные красные и оранжевые тона",
     emoji: "🔥",
     unlockCondition: "duels",
     unlockValue: 10,
@@ -311,7 +312,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "ice",
-    name: "Ледяная пещера",
+    name: "Ледяная пещера", desc: "Холодные голубые и белые тона",
     emoji: "❄️",
     unlockCondition: "streak",
     unlockValue: 7,
@@ -325,7 +326,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "sakura",
-    name: "Цветение сакуры",
+    name: "Цветение сакуры", desc: "Нежные розовые весенние цвета",
     emoji: "🌸",
     unlockCondition: "level",
     unlockValue: 20,
@@ -339,7 +340,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "matrix",
-    name: "Матрица",
+    name: "Матрица", desc: "Зелёный кибер-стиль как в фильме",
     emoji: "💊",
     unlockCondition: "level",
     unlockValue: 25,
@@ -354,7 +355,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "sunset",
-    name: "Закат на пляже",
+    name: "Закат на пляже", desc: "Тёплые оранжево-розовые закатные тона",
     emoji: "🌅",
     unlockCondition: "coins",
     unlockValue: 1000,
@@ -368,7 +369,7 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "ocean",
-    name: "Океанская бездна",
+    name: "Океанская бездна", desc: "Глубокие сине-зелёные морские тона",
     emoji: "🌊",
     unlockCondition: "streak",
     unlockValue: 10,
