@@ -26,6 +26,7 @@ import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
+import { detectPlatform } from '@/hooks/use-platform';
 
 const phaseComponents: Record<string, React.ComponentType> = {
   home: HomeScreen,
@@ -195,10 +196,22 @@ function useReferralHandler() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const platform = detectPlatform();
+
+    // Telegram referral: ?startapp=ref_XXXX
     const startParam = params.get('startapp') || params.get('startApp') || window.Telegram?.WebApp?.initData?.start_param;
     if (startParam && startParam.startsWith('ref_')) {
       const referrerId = parseInt(startParam.replace('ref_', ''));
       if (referrerId && referrerId !== Number(telegramId)) {
+        processReferral(referrerId);
+      }
+    }
+
+    // VK referral: ?vk_ref=ref_XXXX
+    const vkRef = params.get('vk_ref');
+    if (platform === 'vk' && vkRef && vkRef.startsWith('ref_')) {
+      const referrerId = parseInt(vkRef.replace('ref_', ''));
+      if (referrerId && referrerId !== Number(telegramId?.replace('vk_', ''))) {
         processReferral(referrerId);
       }
     }
@@ -459,3 +472,4 @@ export default function Home() {
     </ThemeProvider>
   );
 }
+
