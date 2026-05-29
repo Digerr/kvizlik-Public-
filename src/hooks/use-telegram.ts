@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useQuizStore } from "@/lib/quiz-store";
+import { usePlatform, detectPlatform } from "./use-platform";
+
+// ===== Keep all existing types for backward compatibility =====
 
 interface TelegramUser {
   id: number;
@@ -33,7 +34,7 @@ interface TelegramWebApp {
   };
   colorScheme: "light" | "dark";
   themeParams: Record<string, string>;
-  showPopup: (params: { title?: string; message: string; buttons?: any[] }) => void;
+  showPopup: (params: { title?: string; message: string; buttons?: any[] }, callback?: (id: string) => void) => void;
   HapticFeedback: {
     impactOccurred: (style: "light" | "medium" | "heavy") => void;
     notificationOccurred: (type: "error" | "success" | "warning") => void;
@@ -50,51 +51,62 @@ declare global {
   }
 }
 
+/**
+ * Backward-compatible useTelegram hook.
+ * Now wraps usePlatform — works on Telegram, VK, and web.
+ * Existing components don't need ANY changes.
+ */
 export function useTelegram() {
-  const [tg, setTg] = useState<TelegramWebApp | null>(null);
-  const [user, setUser] = useState<TelegramUser | null>(null);
-  const [isInTelegram, setIsInTelegram] = useState(false);
-  const { setTelegramId, setPlayerName, playerName } = useQuizStore();
+  const platform = usePlatform();
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.Telegram?.WebApp) {
-      const webApp = window.Telegram.WebApp;
-
-      // Ready
-      webApp.ready();
-      webApp.expand();
-
-      // Schedule state updates asynchronously to avoid cascading renders
-      const timer = setTimeout(() => {
-        setTg(webApp);
-        setIsInTelegram(true);
-        if (webApp.initDataUnsafe?.user) {
-          const tgUser = webApp.initDataUnsafe.user;
-          setUser(tgUser);
-
-          // Save Telegram ID to store (triggers cloud sync via page.tsx)
-          const tid = String(tgUser.id);
-          setTelegramId(tid);
-
-          // Auto-set player name from Telegram if not set
-          if (!playerName && tgUser.first_name) {
-            setPlayerName(tgUser.first_name);
-          }
-        }
-      }, 0);
-
-      return () => clearTimeout(timer);
+  // Create a TelegramWebApp-compatible object for components that use tg.*
+  const tgCompat: TelegramWebApp | null = (() => {
+    if (platform.platform === "telegram" && typeof window !== "undefined" && window.Telegram?.WebApp) {
+      return window.Telegram.WebApp;
     }
-  }, []);
+    // For VK/web, create a compatible adapter
+    return {
+      ready: platform.ready,
+      close: () => {},
+      expand: platform.expand,
+      openTelegramLink: (url: string) => platform.openLink(url),
+      MainButton: { text: "", show: () => {}, hide: () => {}, onClick: () => {} },
+      BackButton: { show: () => {}, hide: () => {}, onClick: () => {} },
+      initDataUnsafe: {
+        user: platform.tgUser || (platform.vkUser ? {
+          id: platform.vkUser.id,
+          first_name: platform.vkUser.first_name,
+        } : undefined),
+        start_param: undefined,
+      },
+      colorScheme: "dark" as const,
+      themeParams: {},
+      showPopup: (params, callback) => {
+        platform.showPopup(params).then((result) => callback?.(result));
+      },
+      HapticFeedback: {
+        impactOccurred: (style) => platform.haptic(style),
+        notificationOccurred: (type) => platform.haptic(type),
+        selectionChanged: () => {},
+      },
+      isExpanded: true,
+    };
+  })();
 
-  const haptic = (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
-    if (!tg) return;
-    if (type === "success" || type === "error" || type === "warning") {
-      tg.HapticFeedback.notificationOccurred(type);
-    } else {
-      tg.HapticFeedback.impactOccurred(type);
-    }
+  // Build user object from either TG or VK
+  const user: TelegramUser | null = platform.tgUser || (platform.vkUser ? {
+    id: platform.vkUser.id,
+    first_name: platform.vkUser.first_name,
+    last_name: platform.vkUser.last_name,
+  } : null);
+
+  return {
+    tg: tgCompat,
+    user,
+    isInTelegram: platform.isInApp,
+    haptic: platform.haptic,
+    // Additional VK-specific info
+    platform: platform.platform,
+    isInVK: platform.platform === "vk",
   };
-
-  return { tg, user, isInTelegram, haptic };
 }
