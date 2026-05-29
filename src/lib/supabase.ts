@@ -25,18 +25,34 @@ export interface ProfileRow {
   power_ups: { freeze: number; fiftyFifty: number; hint: number };
   seen_questions: string[];
   categories_played: string[];
-  // New fields
+  // Theme & visual
   current_theme?: string;
   unlocked_themes?: string[];
+  // Duels
   duels_won?: number;
   duels_played?: number;
+  // Survival
   survival_record?: number;
+  // Season
   season_score?: number;
+  season_start?: string | null;
+  // Daily chain
   daily_chain_day?: number;
   daily_chain_completed?: boolean[];
   daily_chain_date?: string | null;
+  // Stats
   category_stats?: Record<string, { played: number; correct: number }>;
   games_by_day?: Record<string, number>;
+  // ===== V4.0 new fields =====
+  profile_frame?: string;
+  referral_count?: number;
+  season_pass_tier?: number;
+  season_pass_claimed?: number[];
+  question_ratings?: Record<string, boolean>;
+  friend_list?: { telegramId: number; name: string; avatarId: string }[];
+  clan_id?: string | null;
+  clan_name?: string | null;
+  notifications_enabled?: boolean;
   updated_at: string;
 }
 
@@ -75,36 +91,46 @@ export async function saveProfile(telegramId: number, profile: Partial<ProfileRo
     .upsert(row, { onConflict: 'telegram_id' });
 
   if (error) {
-    // If upsert fails (possibly due to missing new columns), try with core fields only
-    console.warn('Full profile upsert failed, trying core fields:', error.message);
-    const coreRow = {
-      telegram_id: telegramId,
-      player_name: profile.player_name,
-      avatar_id: profile.avatar_id,
-      total_score: profile.total_score,
-      total_xp: profile.total_xp,
-      level: profile.level,
-      coins: profile.coins,
-      games_played: profile.games_played,
-      total_correct: profile.total_correct,
-      total_questions: profile.total_questions,
-      best_streak: profile.best_streak,
-      current_league: profile.current_league,
-      daily_streak: profile.daily_streak,
-      last_daily_at: profile.last_daily_at,
-      unlocked_avatars: profile.unlocked_avatars,
-      unlocked_achievements: profile.unlocked_achievements,
-      power_ups: profile.power_ups,
-      seen_questions: profile.seen_questions,
-      categories_played: profile.categories_played,
-      updated_at: new Date().toISOString(),
-    };
+    // If upsert fails (possibly due to missing new columns), try without V4 fields
+    console.warn('Full profile upsert failed, trying without V4 fields:', error.message);
+    const { profile_frame, referral_count, season_pass_tier, season_pass_claimed, question_ratings, friend_list, clan_id, clan_name, notifications_enabled, season_start, ...withoutV4 } = row;
+    
     const { error: err2 } = await supabase
       .from('profiles')
-      .upsert(coreRow, { onConflict: 'telegram_id' });
+      .upsert(withoutV4, { onConflict: 'telegram_id' });
+    
     if (err2) {
-      console.error('Core profile upsert also failed:', err2);
-      return false;
+      // Try with core fields only
+      console.warn('Without-V4 upsert also failed, trying core fields:', err2.message);
+      const coreRow = {
+        telegram_id: telegramId,
+        player_name: profile.player_name,
+        avatar_id: profile.avatar_id,
+        total_score: profile.total_score,
+        total_xp: profile.total_xp,
+        level: profile.level,
+        coins: profile.coins,
+        games_played: profile.games_played,
+        total_correct: profile.total_correct,
+        total_questions: profile.total_questions,
+        best_streak: profile.best_streak,
+        current_league: profile.current_league,
+        daily_streak: profile.daily_streak,
+        last_daily_at: profile.last_daily_at,
+        unlocked_avatars: profile.unlocked_avatars,
+        unlocked_achievements: profile.unlocked_achievements,
+        power_ups: profile.power_ups,
+        seen_questions: profile.seen_questions,
+        categories_played: profile.categories_played,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: err3 } = await supabase
+        .from('profiles')
+        .upsert(coreRow, { onConflict: 'telegram_id' });
+      if (err3) {
+        console.error('Core profile upsert also failed:', err3);
+        return false;
+      }
     }
   }
   return true;
