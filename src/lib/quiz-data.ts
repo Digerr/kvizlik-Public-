@@ -322,7 +322,7 @@ export const THEMES: ThemeDef[] = [
       accentFrom: "#3b82f6",
       accentTo: "#22d3ee",
     },
-,
+  },
   {
     id: "sakura",
     name: "Цветение сакуры",
