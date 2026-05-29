@@ -6,13 +6,23 @@ import { useQuizStore } from "@/lib/quiz-store";
 // ===== Platform types =====
 export type Platform = "telegram" | "vk" | "web";
 
+export interface VKUserInfo {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  photo_100?: string;
+  photo_200?: string;
+}
+
 interface PlatformAdapter {
   platform: Platform;
   userId: string | null;
   userName: string | null;
+  userPhoto: string | null;
   isInApp: boolean;
   haptic: (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => void;
   share: (url: string, text: string) => void;
+  shareDuel: (duelLink: string, duelText: string) => void;
   showPopup: (params: { title?: string; message: string; buttons?: any[] }) => void;
   openLink: (url: string) => void;
   ready: () => void;
@@ -24,11 +34,8 @@ export function detectPlatform(): Platform {
   if (typeof window === "undefined") return "web";
   try {
     const url = new URL(window.location.href);
-    // VK passes vk_user_id or vk_platform in URL params
     if (url.searchParams.has("vk_user_id") || url.searchParams.has("vk_platform")) return "vk";
-    // Telegram has window.Telegram.WebApp with initData
     if (window.Telegram?.WebApp?.initDataUnsafe?.user) return "telegram";
-    // Also check for Telegram initData (even without user, it's TG)
     if (window.Telegram?.WebApp?.initData) return "telegram";
   } catch { /* ignore */ }
   return "web";
@@ -38,7 +45,6 @@ export function detectPlatform(): Platform {
 function sendVK(method: string, params?: Record<string, any>): Promise<any> {
   return new Promise((resolve, reject) => {
     try {
-      // Use the global vkBridge object from the CDN script
       const bridge = (window as any).vkBridge || (window as any).VKBridge;
       if (bridge && typeof bridge.send === 'function') {
         bridge.send(method, params).then(resolve).catch(reject);
@@ -65,10 +71,10 @@ export function usePlatform() {
   const [platform, setPlatform] = useState<Platform>("web");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [isInApp, setIsInApp] = useState(false);
-  const [vkUser, setVkUser] = useState<{ id: number; first_name: string; last_name?: string } | null>(null);
+  const [vkUser, setVkUser] = useState<VKUserInfo | null>(null);
   const [tgUser, setTgUser] = useState<any | null>(null);
-  const { setTelegramId, setPlayerName, playerName } = useQuizStore();
 
   useEffect(() => {
     const detected = detectPlatform();
@@ -86,29 +92,68 @@ export function usePlatform() {
 
   async function initVK() {
     try {
-      // Parse VK user from URL params
+      // Parse VK user ID from URL params
       const urlParams = new URLSearchParams(window.location.search);
       const vkUserId = urlParams.get("vk_user_id");
-      const vkUserName = urlParams.get("vk_user_name");
 
       if (vkUserId) {
         const uid = `vk_${vkUserId}`;
         setUserId(uid);
         useQuizStore.getState().setTelegramId(uid);
 
-        const name = vkUserName ? decodeURIComponent(vkUserName) : "Игрок VK";
-        setUserName(name);
-        if (!useQuizStore.getState().playerName) {
-          useQuizStore.getState().setPlayerName(name);
-        }
-        setVkUser({ id: Number(vkUserId), first_name: name });
-      }
+        // Try to get real user info via VK Bridge
+        if (isVKBridgeAvailable()) {
+          try {
+            // VKWebAppGetUserInfo returns user profile data
+            const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
+            if (userInfo) {
+              const firstName = userInfo.first_name || "Игрок";
+              const lastName = userInfo.last_name || "";
+              const fullName = lastName ? `${firstName} ${lastName}` : firstName;
+              const photo = userInfo.photo_100 || userInfo.photo_200 || null;
 
-      // Initialize VK Bridge (from CDN)
-      if (isVKBridgeAvailable()) {
-        try {
-          await sendVK("VKWebAppInit");
-        } catch { /* VK init failed, continue anyway */ }
+              setUserName(fullName);
+              setUserPhoto(photo);
+              setVkUser({
+                id: Number(vkUserId),
+                first_name: firstName,
+                last_name: lastName,
+                photo_100: photo,
+                photo_200: userInfo.photo_200 || null,
+              });
+
+              if (!useQuizStore.getState().playerName) {
+                useQuizStore.getState().setPlayerName(fullName);
+              }
+              // Store photo URL in quiz store
+              useQuizStore.getState().setUserPhoto(photo);
+            }
+          } catch (e) {
+            // Fallback: use ID as name if VK Bridge user info fails
+            console.warn('VKWebAppGetUserInfo failed, using fallback:', e);
+            const fallbackName = "Игрок VK";
+            setUserName(fallbackName);
+            if (!useQuizStore.getState().playerName) {
+              useQuizStore.getState().setPlayerName(fallbackName);
+            }
+            setVkUser({ id: Number(vkUserId), first_name: fallbackName });
+          }
+        } else {
+          // No VK Bridge - just use ID
+          const fallbackName = "Игрок VK";
+          setUserName(fallbackName);
+          if (!useQuizStore.getState().playerName) {
+            useQuizStore.getState().setPlayerName(fallbackName);
+          }
+          setVkUser({ id: Number(vkUserId), first_name: fallbackName });
+        }
+
+        // Initialize VK Bridge
+        if (isVKBridgeAvailable()) {
+          try {
+            await sendVK("VKWebAppInit");
+          } catch { /* VK init failed, continue anyway */ }
+        }
       }
     } catch (e) {
       console.error("VK init error:", e);
@@ -132,6 +177,8 @@ export function usePlatform() {
             useQuizStore.getState().setPlayerName(user.first_name);
           }
           setUserName(user.first_name);
+          // Telegram doesn't provide photo URL via WebApp API, keep null
+          setUserPhoto(null);
         }
       }
     } catch (e) {
@@ -139,7 +186,7 @@ export function usePlatform() {
     }
   }
 
-  // Haptic feedback
+  // Haptic feedback — works on both platforms
   const haptic = (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
     try {
       if (platform === "vk" && isVKBridgeAvailable()) {
@@ -159,7 +206,7 @@ export function usePlatform() {
     } catch { /* ignore */ }
   };
 
-  // Share
+  // Share — generic share for referrals, results, etc.
   const share = (url: string, text: string) => {
     try {
       if (platform === "vk" && isVKBridgeAvailable()) {
@@ -174,6 +221,27 @@ export function usePlatform() {
       }
     } catch {
       navigator.clipboard?.writeText(text + "\n" + url);
+    }
+  };
+
+  // Share duel — platform-specific: TG uses openTelegramLink, VK uses VKWebAppShare
+  const shareDuel = (duelLink: string, duelText: string) => {
+    try {
+      if (platform === "vk" && isVKBridgeAvailable()) {
+        // VK: share via VK share dialog
+        sendVK("VKWebAppShare", { link: duelLink }).catch(() => {
+          navigator.clipboard?.writeText(duelText + "\n" + duelLink);
+        });
+      } else if (platform === "telegram" && window.Telegram?.WebApp) {
+        // Telegram: open share dialog with pre-filled text
+        window.Telegram.WebApp.openTelegramLink(
+          `https://t.me/share/url?url=${encodeURIComponent(duelLink)}&text=${encodeURIComponent(duelText)}`
+        );
+      } else {
+        navigator.clipboard?.writeText(duelText + "\n" + duelLink);
+      }
+    } catch {
+      navigator.clipboard?.writeText(duelText + "\n" + duelLink);
     }
   };
 
@@ -230,18 +298,29 @@ export function usePlatform() {
     }
   };
 
+  // Get referral link for current platform
+  const getReferralLink = () => {
+    const tid = useQuizStore.getState().telegramId;
+    if (platform === "vk") {
+      return tid ? `https://vk.com/app54615586?vk_ref=ref_${tid}` : "https://vk.com/app54615586";
+    }
+    return tid ? `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${tid}` : "https://t.me/kvizlik_bot/kvizlik";
+  };
+
   const adapter: PlatformAdapter = {
     platform,
     userId,
     userName,
+    userPhoto,
     isInApp,
     haptic,
     share,
+    shareDuel,
     showPopup,
     openLink,
     ready,
     expand,
   };
 
-  return { ...adapter, vkUser, tgUser };
+  return { ...adapter, vkUser, tgUser, getReferralLink };
 }
