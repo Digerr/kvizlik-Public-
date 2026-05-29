@@ -286,7 +286,7 @@ export default function ResultScreen() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => {
+              onClick={async () => {
                 haptic('light');
                 const text = `⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠\n${duelShareLink}`;
                 if (isInVK) {
