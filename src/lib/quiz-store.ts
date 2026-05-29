@@ -123,6 +123,7 @@ export interface QuizState {
   // Player profile
   playerName: string;
   telegramId: string | null;
+  userPhoto: string | null; // VK photo URL (TG doesn't provide one)
   totalScore: number;
   totalXP: number;
   gamesPlayed: number;
@@ -247,6 +248,7 @@ export interface QuizState {
   setPhase: (phase: QuizPhase) => void;
   setPlayerName: (name: string) => void;
   setTelegramId: (id: string | null) => void;
+  setUserPhoto: (url: string | null) => void;
   setAvatar: (avatarId: string) => void;
   setDifficulty: (d: 1 | 2 | 3) => void;
   startGame: (categoryId: string | null, questions: Question[], aiMode?: boolean, gameMode?: "normal" | "survival") => void;
@@ -382,6 +384,7 @@ const INITIAL_STATE = {
   phase: "home" as QuizPhase,
   playerName: "",
   telegramId: null as string | null,
+  userPhoto: null as string | null,
   totalScore: 0,
   totalXP: 0,
   gamesPlayed: 0,
@@ -477,10 +480,22 @@ export const useQuizStore = create<QuizState>()(
 
       setPlayerName: (name) => set({ playerName: name }),
       setTelegramId: (id) => set({ telegramId: id }),
+      setUserPhoto: (url) => set({ userPhoto: url }),
       setAvatar: (avatarId) => set({ avatarId }),
       setDifficulty: (d) => set({ difficulty: d }),
 
       // ===== CLOUD SYNC =====
+
+      // Helper: convert platform ID to numeric Supabase ID
+      // VK IDs like "vk_12345" become negative: -12345
+      // Telegram IDs like "721037003" stay positive
+      const _toDbId = (id: string): number => {
+        if (id.startsWith('vk_')) {
+          const num = parseInt(id.replace('vk_', ''), 10);
+          return -num; // Negative to avoid collision with TG IDs
+        }
+        return Number(id);
+      };
 
       syncFromCloud: async () => {
         const state = get();
@@ -489,7 +504,8 @@ export const useQuizStore = create<QuizState>()(
 
         set({ isCloudSyncing: true });
         try {
-          const profile = await loadProfile(Number(tid));
+          const dbId = _toDbId(tid);
+          const profile = await loadProfile(dbId);
           if (profile) {
             const localState = {
               totalScore: state.totalScore,
@@ -543,6 +559,7 @@ export const useQuizStore = create<QuizState>()(
               clanId: (profile as any).clan_id || state.clanId,
               clanName: (profile as any).clan_name || state.clanName,
               notificationsEnabled: (profile as any).notifications_enabled !== undefined ? (profile as any).notifications_enabled : state.notificationsEnabled,
+              userPhoto: (profile as any).photo_url || state.userPhoto,
               seasonStart: (profile as any).season_start || state.seasonStart,
               dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
               dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
@@ -594,6 +611,7 @@ export const useQuizStore = create<QuizState>()(
               clanId: state.clanId || (profile as any).clan_id || null,
               clanName: state.clanName || (profile as any).clan_name || null,
               notificationsEnabled: state.notificationsEnabled || (profile as any).notifications_enabled || false,
+              userPhoto: state.userPhoto || (profile as any).photo_url || null,
               seasonStart: state.seasonStart || (profile as any).season_start || null,
               dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
               dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
@@ -628,7 +646,8 @@ export const useQuizStore = create<QuizState>()(
 
         set({ isCloudSyncing: true, lastCloudSync: now });
         try {
-          await saveProfile(Number(tid), {
+          const dbId = _toDbId(tid);
+          await saveProfile(dbId, {
             player_name: state.playerName || 'Игрок',
             avatar_id: state.avatarId,
             total_score: state.totalScore,
@@ -665,11 +684,12 @@ export const useQuizStore = create<QuizState>()(
             clan_id: state.clanId,
             clan_name: state.clanName,
             notifications_enabled: state.notificationsEnabled,
+            photo_url: state.userPhoto,
             season_start: state.seasonStart,
           } as any);
 
           await updateLeaderboard(
-            Number(tid),
+            dbId,
             state.playerName || 'Игрок',
             state.avatarId,
             state.totalScore,
