@@ -53,6 +53,7 @@ export interface ProfileRow {
   clan_id?: string | null;
   clan_name?: string | null;
   notifications_enabled?: boolean;
+  photo_url?: string | null;
   updated_at: string;
 }
 
@@ -93,7 +94,7 @@ export async function saveProfile(telegramId: number, profile: Partial<ProfileRo
   if (error) {
     // If upsert fails (possibly due to missing new columns), try without V4 fields
     console.warn('Full profile upsert failed, trying without V4 fields:', error.message);
-    const { profile_frame, referral_count, season_pass_tier, season_pass_claimed, question_ratings, friend_list, clan_id, clan_name, notifications_enabled, season_start, ...withoutV4 } = row;
+    const { profile_frame, referral_count, season_pass_tier, season_pass_claimed, question_ratings, friend_list, clan_id, clan_name, notifications_enabled, season_start, photo_url, ...withoutV4 } = row;
     
     const { error: err2 } = await supabase
       .from('profiles')
