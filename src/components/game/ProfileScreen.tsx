@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
 import { AVATARS, LEAGUES, getLeagueProgress, CATEGORIES, THEMES } from '@/lib/quiz-data';
 import { useTelegram } from '@/hooks/use-telegram';
+import { usePlatform } from '@/hooks/use-platform';
 import { ArrowLeft } from 'lucide-react';
 
 const FRAME_OPTIONS: { id: string; name: string; emoji: string; style: string; locked?: boolean }[] = [
@@ -47,10 +48,11 @@ export default function ProfileScreen() {
     setProfileFrame,
     referralCount,
     telegramId,
+    userPhoto,
   } = useQuizStore();
 
   const { haptic, user, platform, isInVK } = useTelegram();
-  const pShare = usePlatform().share;
+  const { share, getReferralLink } = usePlatform();
 
   const avatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0];
   const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
@@ -66,9 +68,6 @@ export default function ProfileScreen() {
 
   const accuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
 
-  // Average response time (from answers)
-  const avgResponseTime = totalQuestions > 0 ? '-' : '-';
-
   // Games over last 7 days
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -78,23 +77,21 @@ export default function ProfileScreen() {
   const last7DaysGames = last7Days.map(d => gamesByDay[d] || 0);
   const maxDayGames = Math.max(...last7DaysGames, 1);
 
-  // Current theme
   const activeTheme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
-
-  // Current frame style for avatar
   const frameStyle = getFrameStyle(profileFrame);
   const isCrownFrame = profileFrame === 'crown';
 
-  // Referral link
-  const referralLink = isInVK
-    ? `https://vk.com/app54615586`
-    : `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId || 'user'}`;
+  // Platform-aware referral link
+  const referralLink = getReferralLink();
   const shareText = 'Привет! Играй в КВИЗЛИК со мной! 🎯🧠';
 
   const handleShareReferral = () => {
     haptic('light');
-    pShare(referralLink, shareText);
+    share(referralLink, shareText);
   };
+
+  // Determine avatar display: VK photo or emoji avatar
+  const hasRealPhoto = !!(userPhoto || (user as any)?.photo_100);
 
   return (
     <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
@@ -116,12 +113,20 @@ export default function ProfileScreen() {
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center mb-5"
         >
-          {/* Crown indicator above avatar */}
           {isCrownFrame && (
             <span className="text-xl mb-[-6px] z-10 drop-shadow-lg">👑</span>
           )}
-          <div className={`w-20 h-20 rounded-full bg-[var(--theme-card)] flex items-center justify-center text-4xl mb-2 ${frameStyle || 'border-2 border-purple-500/30'}`}>
-            {avatar.emoji}
+          <div className={`w-20 h-20 rounded-full bg-[var(--theme-card)] flex items-center justify-center text-4xl mb-2 overflow-hidden ${frameStyle || 'border-2 border-purple-500/30'}`}>
+            {hasRealPhoto ? (
+              <img
+                src={userPhoto || (user as any)?.photo_100}
+                alt={displayName}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              avatar.emoji
+            )}
           </div>
           <h3 className="text-white font-bold text-lg">{displayName}</h3>
           <div className="flex items-center gap-2 mt-1">
@@ -330,5 +335,3 @@ export default function ProfileScreen() {
     </div>
   );
 }
-
-
