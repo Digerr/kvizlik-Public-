@@ -49,6 +49,8 @@ export default function GameScreen() {
     gameMode,
     duelMode,
     duelData,
+    coins,
+    continueUsed,
     selectOption,
     revealAnswer,
     nextQuestion,
@@ -57,6 +59,8 @@ export default function GameScreen() {
     setIsGeneratingQuestions,
     addQuestions,
     addCreatorReaction,
+    useContinueForCoins,
+    rateQuestion,
   } = useQuizStore();
 
   const { haptic } = useTelegram();
@@ -68,6 +72,8 @@ export default function GameScreen() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showReactionBar, setShowReactionBar] = useState(false);
   const [floatingReaction, setFloatingReaction] = useState<string | null>(null);
+  const [showContinueModal, setShowContinueModal] = useState(false);
+  const [questionRating, setQuestionRating] = useState<'up' | 'down' | null>(null);
 
   const question = questions[currentQuestionIndex];
   const category = CATEGORIES.find(c => c.id === categoryId);
@@ -77,6 +83,11 @@ export default function GameScreen() {
   const creatorReaction = duelMode && duelData?.creatorReactions
     ? duelData.creatorReactions[currentQuestionIndex]
     : null;
+
+  // Reset question rating on new question
+  useEffect(() => {
+    setQuestionRating(null);
+  }, [currentQuestionIndex]);
 
   // Fetch AI questions
   const fetchAiQuestions = useCallback(async () => {
@@ -185,6 +196,28 @@ export default function GameScreen() {
     }
   }, [isRevealed]);
 
+  // Survival: auto-advance on correct, show continue modal or end game on wrong
+  useEffect(() => {
+    if (!isSurvival || !isRevealed || !question) return;
+
+    const isCorrect = selectedOption === question.correctIndex;
+
+    if (isCorrect) {
+      const timer = setTimeout(() => handleNext(), 1500);
+      return () => clearTimeout(timer);
+    } else {
+      if (!continueUsed) {
+        setShowContinueModal(true);
+      } else {
+        const timer = setTimeout(() => {
+          useQuizStore.getState().endGame();
+          setPhase('results');
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isRevealed, isSurvival, currentQuestionIndex, continueUsed]);
+
   const handleSelect = (index: number) => {
     if (isRevealed) return;
     if (fiftyFiftyRemoved.includes(index)) return;
@@ -214,6 +247,19 @@ export default function GameScreen() {
     } else {
       nextQuestion();
     }
+  };
+
+  const handleContinue = () => {
+    haptic('success');
+    useContinueForCoins();
+    setShowContinueModal(false);
+  };
+
+  const handleEndGame = () => {
+    haptic('heavy');
+    setShowContinueModal(false);
+    useQuizStore.getState().endGame();
+    setPhase('results');
   };
 
   const handleReaction = (emoji: string) => {
@@ -444,6 +490,53 @@ export default function GameScreen() {
           )}
         </AnimatePresence>
 
+        {/* Question Rating */}
+        {isRevealed && question && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-center gap-3 mt-3"
+          >
+            <span className="text-white/30 text-xs mr-1">Оценить вопрос:</span>
+            <button
+              onClick={() => {
+                if (questionRating !== null) return;
+                rateQuestion(question.id, true);
+                setQuestionRating('up');
+                haptic('light');
+              }}
+              disabled={questionRating !== null}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-all ${
+                questionRating === 'up'
+                  ? 'bg-green-500/20 border-green-500/40 text-green-400 scale-110'
+                  : questionRating !== null
+                  ? 'bg-[var(--theme-card)]/50 border-white/5 text-white/20'
+                  : 'bg-[var(--theme-card)] border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)] active:scale-95'
+              }`}
+            >
+              👍
+            </button>
+            <button
+              onClick={() => {
+                if (questionRating !== null) return;
+                rateQuestion(question.id, false);
+                setQuestionRating('down');
+                haptic('light');
+              }}
+              disabled={questionRating !== null}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-all ${
+                questionRating === 'down'
+                  ? 'bg-red-500/20 border-red-500/40 text-red-400 scale-110'
+                  : questionRating !== null
+                  ? 'bg-[var(--theme-card)]/50 border-white/5 text-white/20'
+                  : 'bg-[var(--theme-card)] border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)] active:scale-95'
+              }`}
+            >
+              👎
+            </button>
+          </motion.div>
+        )}
+
         {/* Next Button */}
         <AnimatePresence>
           {isRevealed && !isSurvival && (
@@ -467,10 +560,58 @@ export default function GameScreen() {
             animate={{ opacity: 1 }}
             className="text-center py-3 text-red-400/60 text-xs"
           >
-            {selectedOption === question?.correctIndex ? '✅ Правильно! Следующий вопрос...' : '💀 Неправильно! Игра окончена...'}
+            {selectedOption === question?.correctIndex ? '✅ Правильно! Следующий вопрос...' : '💀 Неправильно!'}
           </motion.div>
         )}
       </motion.div>
+
+      {/* Continue for Coins Modal */}
+      <AnimatePresence>
+        {showContinueModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-6"
+            onClick={handleEndGame}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[var(--theme-card)] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+            >
+              <p className="text-white font-bold text-lg text-center mb-2">Продолжить за 100 монет?</p>
+              <p className="text-white/40 text-sm text-center mb-5">
+                Ваш баланс: <span className="text-yellow-400 font-medium">🪙 {coins}</span>
+              </p>
+              {coins < 100 && (
+                <p className="text-red-400 text-xs text-center mb-4">Недостаточно монет</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleEndGame}
+                  className="flex-1 bg-red-500/80 text-white font-medium py-3 rounded-2xl hover:bg-red-500 active:scale-[0.98] transition-all"
+                >
+                  Завершить
+                </button>
+                <button
+                  onClick={handleContinue}
+                  disabled={coins < 100}
+                  className={`flex-1 font-medium py-3 rounded-2xl active:scale-[0.98] transition-all ${
+                    coins >= 100
+                      ? 'bg-green-500/80 text-white hover:bg-green-500'
+                      : 'bg-white/10 text-white/30 cursor-not-allowed'
+                  }`}
+                >
+                  Продолжить 🪙
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Duel Reaction Bar */}
       <AnimatePresence>
