@@ -24,7 +24,7 @@ import FriendsScreen from '@/components/game/FriendsScreen';
 import ClanScreen from '@/components/game/ClanScreen';
 import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
 
 const phaseComponents: Record<string, React.ComponentType> = {
@@ -50,6 +50,110 @@ const phaseComponents: Record<string, React.ComponentType> = {
   clan: ClanScreen,
   submit_question: SubmitQuestionScreen,
 };
+
+// ---------------------------------------------------------------------------
+// Notification helpers
+// ---------------------------------------------------------------------------
+
+const LS_LAST_PLAY_DATE = 'kvizlik_last_play_date';
+const LS_NOTIF_ASKED = 'kvizlik_notif_asked';
+
+function getTodayStr(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function hasPlayedToday(): boolean {
+  try {
+    const lastPlay = localStorage.getItem(LS_LAST_PLAY_DATE);
+    return lastPlay === getTodayStr();
+  } catch {
+    return false;
+  }
+}
+
+function markPlayedToday(): void {
+  try {
+    localStorage.setItem(LS_LAST_PLAY_DATE, getTodayStr());
+  } catch {
+    // localStorage unavailable – ignore
+  }
+}
+
+function hasNotifBeenAsked(): boolean {
+  try {
+    return localStorage.getItem(LS_NOTIF_ASKED) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function markNotifAsked(): void {
+  try {
+    localStorage.setItem(LS_NOTIF_ASKED, 'true');
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Attempt to request notification / write access through the Telegram WebApp
+ * API.  Falls back gracefully when the API is unavailable (e.g. dev browser).
+ */
+function requestNotifications(): void {
+  try {
+    const tg = window.Telegram?.WebApp;
+    // Prefer requestWriteAccess (grants permission to send messages from bot)
+    if (typeof tg?.requestWriteAccess === 'function') {
+      tg.requestWriteAccess((granted: boolean) => {
+        if (granted) {
+          console.log('[KVIZLIK] Write access granted – bot can send reminders');
+        }
+      });
+    }
+  } catch {
+    console.warn('[KVIZLIK] Telegram requestWriteAccess not available');
+  }
+}
+
+/**
+ * Show a friendly Telegram popup asking the user if they want daily
+ * reminders.  Only shown once (tracked in localStorage).
+ */
+function showNotifPermissionPopup(): void {
+  if (hasNotifBeenAsked()) return;
+
+  try {
+    const tg = window.Telegram?.WebApp;
+    if (typeof tg?.showPopup === 'function') {
+      tg.showPopup(
+        {
+          title: 'Ежедневные напоминания',
+          message: 'Хотите получать напоминания играть каждый день? \uD83D\uDD14',
+          buttons: [
+            { type: 'ok', text: 'Да, хочу!' },
+            { type: 'cancel', text: 'Нет, спасибо' },
+          ],
+        },
+        (buttonId: string) => {
+          if (buttonId === 'ok' || buttonId === '') {
+            requestNotifications();
+          }
+          // Mark as asked regardless of answer so we never show it again
+          markNotifAsked();
+        },
+      );
+    } else {
+      // Running outside Telegram – just mark as asked so we don't retry
+      markNotifAsked();
+    }
+  } catch {
+    markNotifAsked();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
 
 function useDuelUrlHandler() {
   const { joinDuel, setPhase } = useQuizStore();
@@ -101,15 +205,167 @@ function useReferralHandler() {
   }, [telegramId, processReferral]);
 }
 
-function useCloudSync() {
-  const { telegramId, syncFromCloud, isCloudLoaded } = useQuizStore();
+interface CloudSyncResult {
+  gamesPlayedToday: number;
+  showReminder: boolean;
+}
+
+function useCloudSync(): CloudSyncResult {
+  const { telegramId, syncFromCloud, isCloudLoaded, gamesPlayed } = useQuizStore();
+  const [gamesPlayedToday, setGamesPlayedToday] = useState<number>(0);
+  const [showReminder, setShowReminder] = useState(false);
 
   useEffect(() => {
     if (telegramId && !isCloudLoaded) {
       syncFromCloud();
     }
   }, [telegramId, isCloudLoaded, syncFromCloud]);
+
+  // After cloud sync completes, determine if the user has played today
+  useEffect(() => {
+    if (!isCloudLoaded) return;
+
+    const todayStr = getTodayStr();
+    // gamesPlayed is an array of date-strings (or objects with date) from the store
+    // We count how many entries match today
+    let count = 0;
+    if (Array.isArray(gamesPlayed)) {
+      for (const entry of gamesPlayed) {
+        const entryDate = typeof entry === 'string' ? entry : (entry as { date?: string })?.date;
+        if (entryDate === todayStr) {
+          count++;
+        }
+      }
+    }
+
+    setGamesPlayedToday(count);
+    setShowReminder(count === 0 && !hasPlayedToday());
+
+    // Persist today's play date if the user *has* played
+    if (count > 0) {
+      markPlayedToday();
+    }
+  }, [isCloudLoaded, gamesPlayed]);
+
+  return { gamesPlayedToday, showReminder };
 }
+
+/**
+ * Hook that manages the notification reminder system.
+ * - Shows a "haven't played today" banner on the Home screen
+ * - Shows a one-time Telegram popup asking about daily reminders
+ * - Provides motivational messages based on streak / inactivity
+ */
+function useNotificationReminder(showReminder: boolean) {
+  const { setPhase } = useQuizStore();
+  const [showBanner, setShowBanner] = useState(false);
+  const [motivationalMessage, setMotivationalMessage] = useState<string | null>(null);
+
+  const motivationalMessages = [
+    '🔥 Ты давно не играл! Начни игру!',
+    '⚡️ Твои знания скучают — сыграй раунд!',
+    '🎯 Новые вопросы ждут тебя!',
+    '🧠 Потренируй мозг — начни игру!',
+    '🏆 Чемпион не отдыхает — играй!',
+  ];
+
+  // Determine whether to show the banner
+  useEffect(() => {
+    if (showReminder) {
+      // Pick a random motivational message
+      const idx = Math.floor(Math.random() * motivationalMessages.length);
+      setMotivationalMessage(motivationalMessages[idx]);
+      setShowBanner(true);
+    } else {
+      setShowBanner(false);
+      setMotivationalMessage(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReminder]);
+
+  // One-time notification permission request after cloud sync
+  useEffect(() => {
+    if (!showReminder) return; // only ask when they haven't played today
+    // Small delay so the UI settles first
+    const timer = setTimeout(() => {
+      showNotifPermissionPopup();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [showReminder]);
+
+  // Track play date whenever the phase transitions away from a game
+  useEffect(() => {
+    const phase = useQuizStore.getState().phase;
+    if (phase === 'result' || phase === 'duel_result') {
+      markPlayedToday();
+      setShowBanner(false);
+    }
+  }, [useQuizStore.getState().phase]);
+
+  const handleBannerPlay = useCallback(() => {
+    setPhase('category');
+    markPlayedToday();
+    setShowBanner(false);
+  }, [setPhase]);
+
+  const dismissBanner = useCallback(() => {
+    setShowBanner(false);
+  }, []);
+
+  return { showBanner, motivationalMessage, handleBannerPlay, dismissBanner };
+}
+
+// ---------------------------------------------------------------------------
+// UI: Reminder Banner
+// ---------------------------------------------------------------------------
+
+function ReminderBanner({
+  message,
+  onPlay,
+  onDismiss,
+}: {
+  message: string;
+  onPlay: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="mx-4 mb-3 rounded-xl overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, #FF6B35 0%, #FF3D71 100%)',
+        boxShadow: '0 4px 20px rgba(255, 61, 113, 0.35)',
+      }}
+    >
+      <div className="flex items-center justify-between px-4 py-3">
+        <p className="text-white text-sm font-semibold flex-1 mr-2">{message}</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onPlay}
+            className="px-4 py-1.5 bg-white rounded-lg text-sm font-bold"
+            style={{ color: '#FF3D71' }}
+          >
+            Играть
+          </button>
+          <button
+            onClick={onDismiss}
+            className="text-white/70 hover:text-white text-lg leading-none px-1"
+            aria-label="Dismiss reminder"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Theme provider
+// ---------------------------------------------------------------------------
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { currentTheme } = useQuizStore();
@@ -132,17 +388,62 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
+
 export default function Home() {
   const { phase } = useQuizStore();
   const Component = phaseComponents[phase] || HomeScreen;
 
   useDuelUrlHandler();
-  useCloudSync();
+  const { gamesPlayedToday, showReminder } = useCloudSync();
   useReferralHandler();
+
+  const { showBanner, motivationalMessage, handleBannerPlay, dismissBanner } =
+    useNotificationReminder(showReminder);
+
+  // Effect: when phase is home, check and possibly show motivational message
+  // in the console for debugging and set a CSS class for badge styling
+  useEffect(() => {
+    if (phase === 'home' && showReminder) {
+      console.log('[KVIZLIK] Reminder: user has not played today');
+    }
+  }, [phase, showReminder]);
 
   return (
     <ThemeProvider>
       <main className="min-h-[100dvh] bg-[var(--theme-bg)] overflow-hidden">
+        {/* Notification reminder banner – only shown on home screen */}
+        <AnimatePresence>
+          {phase === 'home' && showBanner && motivationalMessage && (
+            <ReminderBanner
+              message={motivationalMessage}
+              onPlay={handleBannerPlay}
+              onDismiss={dismissBanner}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Subtle badge indicator when user hasn't played today */}
+        {phase === 'home' && gamesPlayedToday === 0 && !showBanner && (
+          <div className="flex justify-center mt-2">
+            <span
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium"
+              style={{
+                background: 'rgba(255, 107, 53, 0.15)',
+                color: '#FF6B35',
+              }}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
+              </span>
+              Ещё не играл сегодня
+            </span>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           <motion.div
             key={phase}
