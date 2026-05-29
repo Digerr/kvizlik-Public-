@@ -224,8 +224,7 @@ interface CloudSyncResult {
 }
 
 function useCloudSync(): CloudSyncResult {
-  const { telegramId, syncFromCloud, isCloudLoaded, gamesPlayed } = useQuizStore();
-  const [gamesPlayedToday, setGamesPlayedToday] = useState<number>(0);
+  const { telegramId, syncFromCloud, isCloudLoaded, gamesPlayedToday: storeGamesToday } = useQuizStore();
   const [showReminder, setShowReminder] = useState(false);
 
   useEffect(() => {
@@ -234,33 +233,20 @@ function useCloudSync(): CloudSyncResult {
     }
   }, [telegramId, isCloudLoaded, syncFromCloud]);
 
-  // After cloud sync completes, determine if the user has played today
+  // After cloud sync completes, determine reminder state
   useEffect(() => {
     if (!isCloudLoaded) return;
 
-    const todayStr = getTodayStr();
-    // gamesPlayed is an array of date-strings (or objects with date) from the store
-    // We count how many entries match today
-    let count = 0;
-    if (Array.isArray(gamesPlayed)) {
-      for (const entry of gamesPlayed) {
-        const entryDate = typeof entry === 'string' ? entry : (entry as { date?: string })?.date;
-        if (entryDate === todayStr) {
-          count++;
-        }
-      }
-    }
-
-    setGamesPlayedToday(count);
-    setShowReminder(count === 0 && !hasPlayedToday());
+    const playedToday = storeGamesToday > 0 || hasPlayedToday();
+    setShowReminder(!playedToday);
 
     // Persist today's play date if the user *has* played
-    if (count > 0) {
+    if (storeGamesToday > 0) {
       markPlayedToday();
     }
-  }, [isCloudLoaded, gamesPlayed]);
+  }, [isCloudLoaded, storeGamesToday]);
 
-  return { gamesPlayedToday, showReminder };
+  return { gamesPlayedToday: storeGamesToday, showReminder };
 }
 
 /**
@@ -307,13 +293,13 @@ function useNotificationReminder(showReminder: boolean) {
   }, [showReminder]);
 
   // Track play date whenever the phase transitions away from a game
+  const phase = useQuizStore((s) => s.phase);
   useEffect(() => {
-    const phase = useQuizStore.getState().phase;
-    if (phase === 'result' || phase === 'duel_result') {
+    if (phase === 'result' || phase === 'duel_result' || phase === 'chest') {
       markPlayedToday();
       setShowBanner(false);
     }
-  }, [useQuizStore.getState().phase]);
+  }, [phase]);
 
   const handleBannerPlay = useCallback(() => {
     setPhase('category');
