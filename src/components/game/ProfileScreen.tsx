@@ -6,6 +6,21 @@ import { AVATARS, LEAGUES, getLeagueProgress, CATEGORIES, THEMES } from '@/lib/q
 import { useTelegram } from '@/hooks/use-telegram';
 import { ArrowLeft } from 'lucide-react';
 
+const FRAME_OPTIONS: { id: string; name: string; emoji: string; style: string; locked?: boolean }[] = [
+  { id: 'none', name: 'Без рамки', emoji: '⚪', style: '' },
+  { id: 'gold', name: 'Золото', emoji: '🥇', style: 'border-2 border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.3)]' },
+  { id: 'diamond', name: 'Алмаз', emoji: '💎', style: 'border-2 border-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.3)]' },
+  { id: 'fire', name: 'Огонь', emoji: '🔥', style: 'border-2 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.3)] animate-pulse' },
+  { id: 'ice', name: 'Лёд', emoji: '❄️', style: 'border-2 border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.3)]' },
+  { id: 'neon', name: 'Неон', emoji: '💜', style: 'border-2 border-purple-500 shadow-[0_0_16px_rgba(168,85,247,0.5)]' },
+  { id: 'crown', name: 'Корона', emoji: '👑', style: 'border-2 border-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.4)]' },
+];
+
+function getFrameStyle(frameId: string): string {
+  const frame = FRAME_OPTIONS.find(f => f.id === frameId);
+  return frame?.style ?? '';
+}
+
 export default function ProfileScreen() {
   const {
     playerName,
@@ -28,6 +43,10 @@ export default function ProfileScreen() {
     categoryStats,
     gamesByDay,
     setPhase,
+    profileFrame,
+    setProfileFrame,
+    referralCount,
+    telegramId,
   } = useQuizStore();
 
   const { haptic, user } = useTelegram();
@@ -61,6 +80,23 @@ export default function ProfileScreen() {
   // Current theme
   const activeTheme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
 
+  // Current frame style for avatar
+  const frameStyle = getFrameStyle(profileFrame);
+  const isCrownFrame = profileFrame === 'crown';
+
+  // Referral link
+  const referralLink = `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId || 'user'}`;
+  const shareText = 'Привет! Играй в КВИЗЛИК со мной! 🎯🧠';
+
+  const handleShareReferral = () => {
+    haptic('light');
+    const encodedUrl = encodeURIComponent(referralLink);
+    const encodedText = encodeURIComponent(shareText);
+    window.Telegram?.WebApp.openTelegramLink(
+      `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`
+    );
+  };
+
   return (
     <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
       {/* Header */}
@@ -81,7 +117,11 @@ export default function ProfileScreen() {
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center mb-5"
         >
-          <div className="w-20 h-20 rounded-full bg-[var(--theme-card)] flex items-center justify-center text-4xl border-2 border-purple-500/30 mb-2">
+          {/* Crown indicator above avatar */}
+          {isCrownFrame && (
+            <span className="text-xl mb-[-6px] z-10 drop-shadow-lg">👑</span>
+          )}
+          <div className={`w-20 h-20 rounded-full bg-[var(--theme-card)] flex items-center justify-center text-4xl mb-2 ${frameStyle || 'border-2 border-purple-500/30'}`}>
             {avatar.emoji}
           </div>
           <h3 className="text-white font-bold text-lg">{displayName}</h3>
@@ -168,6 +208,40 @@ export default function ProfileScreen() {
           ))}
         </div>
 
+        {/* Profile Frame Selection */}
+        <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4">
+          <p className="text-white/50 text-xs mb-3">Рамка профиля</p>
+          <div className="grid grid-cols-4 gap-2">
+            {FRAME_OPTIONS.map((frame) => {
+              const isSelected = profileFrame === frame.id;
+              const isLocked = frame.locked;
+              return (
+                <button
+                  key={frame.id}
+                  onClick={() => {
+                    if (isLocked) return;
+                    haptic('light');
+                    setProfileFrame(frame.id);
+                  }}
+                  className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+                    isSelected
+                      ? 'border-purple-500 bg-purple-500/15'
+                      : isLocked
+                        ? 'border-white/5 bg-white/[0.02] opacity-50'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="text-lg">{isLocked ? '🔒' : frame.emoji}</span>
+                  <span className="text-white/60 text-[9px] leading-tight text-center">{frame.name}</span>
+                  {isSelected && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center text-[8px]">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Category Accuracy Breakdown */}
         <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4">
           <p className="text-white/50 text-xs mb-3">Точность по категориям</p>
@@ -216,6 +290,23 @@ export default function ProfileScreen() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Referral Link Section */}
+        <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-white/50 text-xs">Реферальная программа</p>
+            <span className="text-white/40 text-xs">Рефералы: {referralCount ?? 0}</span>
+          </div>
+          <div className="bg-white/5 rounded-xl p-2.5 mb-3 flex items-center gap-2">
+            <span className="text-white/30 text-[10px] truncate flex-1 select-all">{referralLink}</span>
+          </div>
+          <button
+            onClick={handleShareReferral}
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white font-medium text-sm active:scale-[0.97] transition-transform"
+          >
+            Пригласить друга 🤝
+          </button>
         </div>
 
         {/* Categories Played */}
