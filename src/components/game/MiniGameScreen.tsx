@@ -14,7 +14,7 @@ export default function MiniGameScreen() {
       // Auto-skip if time runs out
     }, 1000);
     return () => clearInterval(timer);
-  }, [miniGameIndex, current]);
+  }, [mminiGameIndex, current]);
 
   if (!current) {
     return (
@@ -74,3 +74,4 @@ export default function MiniGameScreen() {
     </div>
   );
 }
+
