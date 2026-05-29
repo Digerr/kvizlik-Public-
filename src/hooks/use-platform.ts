@@ -157,6 +157,40 @@ export function usePlatform() {
     } catch (e) { console.error("VK init error:", e); }
   }
 
+  // VK theme change listener
+  const [vkTheme, setVkTheme] = useState<'light' | 'dark'>('dark');
+
+  // VK Pull-to-refresh handler
+  function subscribeToRefresh(callback: () => void) {
+    if (typeof window === 'undefined') return;
+    try {
+      const bridge = (window as any).vkBridge || (window as any).VKBridge;
+      if (bridge && typeof bridge.subscribe === 'function') {
+        bridge.subscribe((event: any) => {
+          // Handle VK theme changes
+          if (event?.type === 'VKWebAppUpdateConfig') {
+            const scheme = event?.data?.scheme;
+            if (scheme === 'bright_light') {
+              setVkTheme('light');
+              document.documentElement.classList.remove('dark');
+              document.documentElement.classList.add('light');
+            } else {
+              setVkTheme('dark');
+              document.documentElement.classList.remove('light');
+              document.documentElement.classList.add('dark');
+            }
+          }
+          if (event?.type === 'VKWebAppRefresh') {
+            console.log('[KVIZLIK] VK pull-to-refresh triggered');
+            callback();
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[KVIZLIK] VK refresh subscribe failed:', e);
+    }
+  }
+
   function initTelegram() {
     try {
       const webApp = window.Telegram?.WebApp;
@@ -319,5 +353,5 @@ export function usePlatform() {
     expand,
   };
 
-  return { ...adapter, vkUser, tgUser, getReferralLink };
+  return { ...adapter, vkUser, tgUser, getReferralLink, vkTheme, subscribeToRefresh };
 }
