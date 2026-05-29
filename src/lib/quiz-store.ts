@@ -5,6 +5,7 @@ import {
   type League,
   getLeagueByScore,
   getLeagueProgress,
+  getActiveCombo,
   POWER_UPS,
   ACHIEVEMENTS,
   AVATARS,
@@ -13,6 +14,15 @@ import {
   CHEST_TYPES,
   SURVIVAL_MILESTONES,
   DAILY_CHAIN,
+  PROFILE_FRAMES,
+  COMBO_TIERS,
+  SEASON_PASS_TIERS,
+  CONTINUE_COST,
+  MAX_CONTINUES_PER_GAME,
+  REFERRAL_REWARD_REFERER,
+  REFERRAL_REWARD_REFEREE,
+  getActiveEvents,
+  TRUE_FALSE_STATEMENTS,
 } from "./quiz-data";
 import {
   loadProfile,
@@ -37,7 +47,13 @@ export type QuizPhase =
   | "themes"
   | "chest"
   | "tournament"
-  | "faq";
+  | "faq"
+  | "season_pass"
+  | "event"
+  | "mini_game"
+  | "friends"
+  | "clan"
+  | "submit_question";
 
 export interface DuelData {
   questions: string[];
@@ -167,6 +183,25 @@ export interface QuizState {
   // Cloud sync
   isCloudLoaded: boolean;
   isCloudSyncing: boolean;
+  // V4.0 new state
+  comboMultiplier: number;
+  comboStreak: number;
+  continueUsed: boolean;
+  profileFrame: string;
+  referralCount: number;
+  seasonPassTier: number;
+  seasonPassClaimed: number[];
+  activeEventId: string | null;
+  miniGameMode: boolean;
+  miniGameStatements: { id: string; statement: string; isTrue: boolean; }[];
+  miniGameIndex: number;
+  miniGameScore: number;
+  miniGameTimer: number;
+  questionRatings: Record<string, boolean>;
+  friendList: { telegramId: number; name: string; avatarId: string; }[];
+  clanId: string | null;
+  clanName: string | null;
+  notificationsEnabled: boolean;
   lastCloudSync: number;
 
   // Leaderboard (real from cloud)
@@ -270,6 +305,17 @@ export interface QuizState {
   // Tournament
   fetchTournament: () => Promise<void>;
 
+  // V4.0 new actions
+  setComboStreak: (s: number) => void;
+  useContinue: () => boolean;
+  setProfileFrame: (frame: string) => void;
+  processReferral: (referrerId: number) => Promise<void>;
+  claimSeasonPassTier: (tier: number) => void;
+  checkSeasonPassTiers: () => void;
+  startMiniGame: () => void;
+  answerMiniGame: (answer: boolean) => void;
+  rateQuestion: (questionId: string, liked: boolean) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
   resetAll: () => void;
 }
 
@@ -380,6 +426,25 @@ const INITIAL_STATE = {
   creatorReactions: [] as string[],
   isCloudLoaded: false,
   isCloudSyncing: false,
+  // V4.0
+  comboMultiplier: 1,
+  comboStreak: 0,
+  continueUsed: false,
+  profileFrame: "none",
+  referralCount: 0,
+  seasonPassTier: 0,
+  seasonPassClaimed: [],
+  activeEventId: null,
+  miniGameMode: false,
+  miniGameStatements: [],
+  miniGameIndex: 0,
+  miniGameScore: 0,
+  miniGameTimer: 5,
+  questionRatings: {},
+  friendList: [],
+  clanId: null,
+  clanName: null,
+  notificationsEnabled: true,
   lastCloudSync: 0,
   leaderboard: [] as LeaderboardEntry[],
   // New features
@@ -1493,6 +1558,81 @@ export const useQuizStore = create<QuizState>()(
         }
       },
 
+      // V4.0 new actions
+      setComboStreak: (s) => {
+        const combo = getActiveCombo(s);
+        set({ comboStreak: s, comboMultiplier: combo ? combo.multiplier : 1 });
+      },
+      useContinue: () => {
+        const state = get();
+        if (state.continueUsed || state.coins < CONTINUE_COST) return false;
+        set({ coins: state.coins - CONTINUE_COST, continueUsed: true });
+        return true;
+      },
+      setProfileFrame: (frame) => set({ profileFrame: frame }),
+      processReferral: async (referrerId) => {
+        const state = get();
+        if (!state.telegramId || referrerId === Number(state.telegramId)) return;
+        set({ coins: state.coins + REFERRAL_REWARD_REFEREE, referralCount: state.referralCount + 1 });
+      },
+      claimSeasonPassTier: (tier) => {
+        const state = get();
+        if (state.seasonPassClaimed.includes(tier)) return;
+        const tierData = SEASON_PASS_TIERS.find(t => t.tier === tier);
+        if (!tierData) return;
+        const reward = tierData.reward;
+        const updates: any = { seasonPassClaimed: [...state.seasonPassClaimed, tier] };
+        if (reward.type === 'coins') updates.coins = state.coins + (reward.amount || 0);
+        if (reward.type === 'avatar' && !state.unlockedAvatars.includes(String(reward.value))) updates.unlockedAvatars = [...state.unlockedAvatars, String(reward.value)];
+        if (reward.type === 'frame') updates.profileFrame = String(reward.value);
+        if (reward.type === 'theme' && !state.unlockedThemes.includes(String(reward.value))) updates.unlockedThemes = [...state.unlockedThemes, String(reward.value)];
+        set(updates);
+      },
+      checkSeasonPassTiers: () => {
+        const state = get();
+        for (const tier of SEASON_PASS_TIERS) {
+          if (state.seasonScore >= tier.xpRequired && !state.seasonPassClaimed.includes(tier.tier)) {
+            set({ seasonPassTier: tier.tier });
+          }
+        }
+      },
+      startMiniGame: () => {
+        const statements = [...TRUE_FALSE_STATEMENTS].sort(() => Math.random() - 0.5).slice(0, 10);
+        set({
+          miniGameMode: true,
+          miniGameStatements: statements.map(s => ({ id: s.id, statement: s.statement, isTrue: s.isTrue })),
+          miniGameIndex: 0,
+          miniGameScore: 0,
+          miniGameTimer: 5,
+          phase: "mini_game",
+        });
+      },
+      answerMiniGame: (answer) => {
+        const state = get();
+        const current = state.miniGameStatements[state.miniGameIndex];
+        if (!current) return;
+        const correct = answer === current.isTrue;
+        const newScore = correct ? state.miniGameScore + 1 : state.miniGameScore;
+        const newIndex = state.miniGameIndex + 1;
+        if (newIndex >= state.miniGameStatements.length) {
+          const coinsEarned = newScore >= 8 ? newScore * 20 : newScore * 10;
+          set({
+            miniGameScore: newScore,
+            miniGameIndex: newIndex,
+            coins: state.coins + coinsEarned,
+            totalXP: state.totalXP + newScore * 5,
+            miniGameMode: false,
+            phase: "result",
+          });
+        } else {
+          set({ miniGameScore: newScore, miniGameIndex: newIndex, miniGameTimer: 5 });
+        }
+      },
+      rateQuestion: (questionId, liked) => {
+        const state = get();
+        set({ questionRatings: { ...state.questionRatings, [questionId]: liked } });
+      },
+      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
       resetAll: () => set(INITIAL_STATE),
     }),
     {
@@ -1535,6 +1675,12 @@ export const useQuizStore = create<QuizState>()(
         gamesByDay: state.gamesByDay,
         gamesPlayedToday: state.gamesPlayedToday,
         gamesPlayedTodayDate: state.gamesPlayedTodayDate,
+        profileFrame: state.profileFrame,
+        referralCount: state.referralCount,
+        seasonPassTier: state.seasonPassTier,
+        seasonPassClaimed: state.seasonPassClaimed,
+        questionRatings: state.questionRatings,
+        notificationsEnabled: state.notificationsEnabled,
       }),
       merge: (persistedState: any, currentState: any) => {
         // Always force isCloudLoaded to false on app start
