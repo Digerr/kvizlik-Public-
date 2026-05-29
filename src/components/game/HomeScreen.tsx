@@ -24,7 +24,9 @@ export default function HomeScreen() {
     friendList,
     clanId,
     seasonScore,
+    gamesPlayedToday,
     setPhase,
+    checkDailyReset,
     refreshDailyTasks,
   } = useQuizStore();
 
@@ -35,8 +37,9 @@ export default function HomeScreen() {
   const activeTheme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
 
   useEffect(() => {
+    checkDailyReset();
     refreshDailyTasks();
-  }, [refreshDailyTasks]);
+  }, [checkDailyReset, refreshDailyTasks]);
 
   useEffect(() => {
     if (newAchievements.length > 0) {
@@ -153,6 +156,12 @@ export default function HomeScreen() {
                 <>
                   <span className="text-white/30 text-xs">•</span>
                   <span className="text-orange-400/80 text-xs">🔥 {dailyStreak}</span>
+                </>
+              )}
+              {gamesPlayedToday > 0 && (
+                <>
+                  <span className="text-white/30 text-xs">•</span>
+                  <span className="text-blue-400/80 text-xs">🎮 {gamesPlayedToday} сегодня</span>
                 </>
               )}
             </div>
