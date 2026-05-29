@@ -26,6 +26,7 @@ export default function ThemesScreen() {
       case 'coins': return `${theme.unlockValue} монет`;
       case 'duels': return `${theme.unlockValue} побед в дуэли`;
       case 'streak': return `Серия ${theme.unlockValue} дней`;
+      default: return '';
     }
   };
 
@@ -36,10 +37,11 @@ export default function ThemesScreen() {
   const isConditionMet = (theme: ThemeDef): boolean => {
     switch (theme.unlockCondition) {
       case 'default': return true;
-      case 'level': return level >= theme.unlockValue;
-      case 'coins': return coins >= theme.unlockValue;
-      case 'duels': return duelsWon >= theme.unlockValue;
-      case 'streak': return dailyStreak >= theme.unlockValue;
+      case 'level': return level >= (theme.unlockValue || 0);
+      case 'coins': return coins >= (theme.unlockValue || 0);
+      case 'duels': return duelsWon >= (theme.unlockValue || 0);
+      case 'streak': return dailyStreak >= (theme.unlockValue || 0);
+      default: return false;
     }
   };
 
@@ -77,6 +79,7 @@ export default function ThemesScreen() {
         <p className="text-white/50 text-xs uppercase tracking-wider mb-2">Текущая тема</p>
         <span className="text-4xl block mb-2">{THEMES.find(t => t.id === currentTheme)?.emoji}</span>
         <p className="text-white font-bold text-lg">{THEMES.find(t => t.id === currentTheme)?.name}</p>
+        <p className="text-white/40 text-xs mt-1">{THEMES.find(t => t.id === currentTheme)?.desc || ''}</p>
       </motion.div>
 
       {/* Theme List */}
@@ -127,8 +130,9 @@ export default function ThemesScreen() {
                     </span>
                   )}
                 </div>
-                <p className="text-white/40 text-[10px] mt-0.5">
-                  {unlocked ? getUnlockText(theme) : getUnlockText(theme)}
+                {/* Description */}
+                <p className="text-white/50 text-[11px] mt-0.5">
+                  {theme.desc || getUnlockText(theme)}
                 </p>
 
                 {/* Color dots */}
