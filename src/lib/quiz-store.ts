@@ -351,6 +351,17 @@ function getToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Helper: convert platform ID to numeric Supabase ID
+// VK IDs like "vk_12345" become negative: -12345
+// Telegram IDs like "721037003" stay positive
+function _toDbId(id: string): number {
+  if (id.startsWith('vk_')) {
+    const num = parseInt(id.replace('vk_', ''), 10);
+    return -num; // Negative to avoid collision with TG IDs
+  }
+  return Number(id);
+}
+
 function calcLevel(xp: number): number {
   return Math.floor(Math.sqrt(xp / 50)) + 1;
 }
@@ -489,16 +500,7 @@ export const useQuizStore = create<QuizState>()(
 
       // ===== CLOUD SYNC =====
 
-      // Helper: convert platform ID to numeric Supabase ID
-      // VK IDs like "vk_12345" become negative: -12345
-      // Telegram IDs like "721037003" stay positive
-      const _toDbId = (id: string): number => {
-        if (id.startsWith('vk_')) {
-          const num = parseInt(id.replace('vk_', ''), 10);
-          return -num; // Negative to avoid collision with TG IDs
-        }
-        return Number(id);
-      };
+
 
       syncFromCloud: async () => {
         const state = get();
