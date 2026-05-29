@@ -42,7 +42,7 @@ export default function RootLayout({
         <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js" async></script>
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0f0a1e] text-white select-none`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[var(--theme-bg)] text-foreground select-none`}
       >
         {children}
         <Toaster />
