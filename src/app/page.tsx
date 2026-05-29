@@ -23,6 +23,7 @@ import MiniGameScreen from '@/components/game/MiniGameScreen';
 import FriendsScreen from '@/components/game/FriendsScreen';
 import ClanScreen from '@/components/game/ClanScreen';
 import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
+import OnboardingScreen from '@/components/game/OnboardingScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
@@ -50,6 +51,7 @@ const phaseComponents: Record<string, React.ComponentType> = {
   friends: FriendsScreen,
   clan: ClanScreen,
   submit_question: SubmitQuestionScreen,
+  onboarding: OnboardingScreen,
 };
 
 // ---------------------------------------------------------------------------
@@ -392,8 +394,13 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const { phase } = useQuizStore();
-  const Component = phaseComponents[phase] || HomeScreen;
+  const { phase, hasSeenTutorial, setHasSeenTutorial } = useQuizStore();
+  
+  // Show onboarding for first-time users
+  const showOnboarding = !hasSeenTutorial;
+  
+  const effectivePhase = showOnboarding ? 'onboarding' : phase;
+  const Component = phaseComponents[effectivePhase] || HomeScreen;
 
   useDuelUrlHandler();
   const { gamesPlayedToday, showReminder } = useCloudSync();
@@ -415,7 +422,7 @@ export default function Home() {
       <main className="min-h-[100dvh] bg-[var(--theme-bg)] overflow-hidden">
         {/* Notification reminder banner – only shown on home screen */}
         <AnimatePresence>
-          {phase === 'home' && showBanner && motivationalMessage && (
+          {!showOnboarding && phase === 'home' && showBanner && motivationalMessage && (
             <ReminderBanner
               message={motivationalMessage}
               onPlay={handleBannerPlay}
@@ -425,7 +432,7 @@ export default function Home() {
         </AnimatePresence>
 
         {/* Subtle badge indicator when user hasn't played today */}
-        {phase === 'home' && gamesPlayedToday === 0 && !showBanner && (
+        {!showOnboarding && phase === 'home' && gamesPlayedToday === 0 && !showBanner && (
           <div className="flex justify-center mt-2">
             <span
               className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium"
@@ -445,7 +452,7 @@ export default function Home() {
 
         <AnimatePresence mode="wait">
           <motion.div
-            key={phase}
+            key={effectivePhase}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
