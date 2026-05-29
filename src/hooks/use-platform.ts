@@ -101,63 +101,48 @@ export function usePlatform() {
         setUserId(uid);
         useQuizStore.getState().setTelegramId(uid);
 
-        // Try to get real user info via VK Bridge
-        if (isVKBridgeAvailable()) {
-          try {
-            // VKWebAppGetUserInfo returns user profile data
-            const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
-            if (userInfo) {
-              const firstName = userInfo.first_name || "Игрок";
-              const lastName = userInfo.last_name || "";
-              const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-              const photo = userInfo.photo_100 || userInfo.photo_200 || null;
-
-              setUserName(fullName);
-              setUserPhoto(photo);
-              setVkUser({
-                id: Number(vkUserId),
-                first_name: firstName,
-                last_name: lastName,
-                photo_100: photo,
-                photo_200: userInfo.photo_200 || null,
-              });
-
-              if (!useQuizStore.getState().playerName) {
-                useQuizStore.getState().setPlayerName(fullName);
+        // Try to get user info with retries
+        const tryGetUserInfo = async (retries: number = 3): Promise<void> => {
+          for (let attempt = 0; attempt < retries; attempt++) {
+            if (isVKBridgeAvailable()) {
+              try {
+                const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
+                if (userInfo) {
+                  const firstName = userInfo.first_name || "Игрок";
+                  const lastName = userInfo.last_name || "";
+                  const fullName = lastName ? `${firstName} ${lastName}` : firstName;
+                  const photo = userInfo.photo_100 || userInfo.photo_200 || null;
+                  setUserName(fullName);
+                  setUserPhoto(photo);
+                  setVkUser({ id: Number(vkUserId), first_name: firstName, last_name: lastName, photo_100: photo, photo_200: userInfo.photo_200 || null });
+                  if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fullName);
+                  useQuizStore.getState().setUserPhoto(photo);
+                  return;
+                }
+              } catch (e) {
+                console.warn(`VKWebAppGetUserInfo attempt ${attempt + 1} failed:`, e);
               }
-              // Store photo URL in quiz store
-              useQuizStore.getState().setUserPhoto(photo);
             }
-          } catch (e) {
-            // Fallback: use ID as name if VK Bridge user info fails
-            console.warn('VKWebAppGetUserInfo failed, using fallback:', e);
-            const fallbackName = "Игрок VK";
-            setUserName(fallbackName);
-            if (!useQuizStore.getState().playerName) {
-              useQuizStore.getState().setPlayerName(fallbackName);
+            // Wait before retry
+            if (attempt < retries - 1) {
+              await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
             }
-            setVkUser({ id: Number(vkUserId), first_name: fallbackName });
           }
-        } else {
-          // No VK Bridge - just use ID
+          // Fallback
           const fallbackName = "Игрок VK";
           setUserName(fallbackName);
-          if (!useQuizStore.getState().playerName) {
-            useQuizStore.getState().setPlayerName(fallbackName);
-          }
+          if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fallbackName);
           setVkUser({ id: Number(vkUserId), first_name: fallbackName });
-        }
+        };
 
-        // Initialize VK Bridge
+        await tryGetUserInfo();
+
+        // Init VK app
         if (isVKBridgeAvailable()) {
-          try {
-            await sendVK("VKWebAppInit");
-          } catch { /* VK init failed, continue anyway */ }
+          try { await sendVK("VKWebAppInit"); } catch { }
         }
       }
-    } catch (e) {
-      console.error("VK init error:", e);
-    }
+    } catch (e) { console.error("VK init error:", e); }
   }
 
   function initTelegram() {
