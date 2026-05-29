@@ -50,6 +50,7 @@ export default function ProfileScreen() {
   } = useQuizStore();
 
   const { haptic, user, platform, isInVK } = useTelegram();
+  const pShare = usePlatform().share;
 
   const avatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0];
   const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
@@ -90,22 +91,9 @@ export default function ProfileScreen() {
     : `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId || 'user'}`;
   const shareText = 'Привет! Играй в КВИЗЛИК со мной! 🎯🧠';
 
-  const handleShareReferral = async () => {
+  const handleShareReferral = () => {
     haptic('light');
-    if (isInVK) {
-      try {
-        const vkBridge = (await import('@vkontakte/vk-bridge')).default;
-        await vkBridge.send('VKWebAppShare', { link: referralLink });
-      } catch {
-        navigator.clipboard?.writeText(shareText + '\n' + referralLink);
-      }
-    } else {
-      const encodedUrl = encodeURIComponent(referralLink);
-      const encodedText = encodeURIComponent(shareText);
-      window.Telegram?.WebApp.openTelegramLink(
-        `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`
-      );
-    }
+    pShare(referralLink, shareText);
   };
 
   return (
@@ -342,4 +330,5 @@ export default function ProfileScreen() {
     </div>
   );
 }
+
 
