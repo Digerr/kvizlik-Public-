@@ -53,7 +53,9 @@ export type QuizPhase =
   | "mini_game"
   | "friends"
   | "clan"
-  | "submit_question";
+  | "submit_question"
+  | "privacy_policy"
+  | "unsupported";
 
 export interface DuelData {
   questions: string[];
