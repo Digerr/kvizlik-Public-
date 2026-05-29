@@ -533,6 +533,20 @@ export const useQuizStore = create<QuizState>()(
               seasonScore: (profile as any).season_score || 0,
               categoryStats: (profile as any).category_stats || state.categoryStats,
               gamesByDay: (profile as any).games_by_day || state.gamesByDay,
+              // V4.0 cloud fields
+              profileFrame: (profile as any).profile_frame || state.profileFrame,
+              referralCount: Math.max((profile as any).referral_count || 0, state.referralCount),
+              seasonPassTier: Math.max((profile as any).season_pass_tier || 0, state.seasonPassTier),
+              seasonPassClaimed: (profile as any).season_pass_claimed?.length > 0 ? (profile as any).season_pass_claimed : state.seasonPassClaimed,
+              questionRatings: (profile as any).question_ratings && Object.keys((profile as any).question_ratings).length > 0 ? (profile as any).question_ratings : state.questionRatings,
+              friendList: (profile as any).friend_list?.length > 0 ? (profile as any).friend_list : state.friendList,
+              clanId: (profile as any).clan_id || state.clanId,
+              clanName: (profile as any).clan_name || state.clanName,
+              notificationsEnabled: (profile as any).notifications_enabled !== undefined ? (profile as any).notifications_enabled : state.notificationsEnabled,
+              seasonStart: (profile as any).season_start || state.seasonStart,
+              dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
+              dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
+              dailyChainDate: (profile as any).daily_chain_date || state.dailyChainDate,
             } : {
               playerName: profile.player_name || state.playerName,
               avatarId: profile.avatar_id || state.avatarId,
@@ -561,6 +575,29 @@ export const useQuizStore = create<QuizState>()(
               seasonScore: Math.max((profile as any).season_score || 0, state.seasonScore),
               categoryStats: (profile as any).category_stats || state.categoryStats,
               gamesByDay: (profile as any).games_by_day || state.gamesByDay,
+              // V4.0 cloud fields (merge with local)
+              profileFrame: state.profileFrame !== 'none' ? state.profileFrame : ((profile as any).profile_frame || 'none'),
+              referralCount: Math.max((profile as any).referral_count || 0, state.referralCount),
+              seasonPassTier: Math.max((profile as any).season_pass_tier || 0, state.seasonPassTier),
+              seasonPassClaimed: (profile as any).season_pass_claimed?.length > 0
+                ? [...new Set([...state.seasonPassClaimed, ...(profile as any).season_pass_claimed])]
+                : state.seasonPassClaimed,
+              questionRatings: (profile as any).question_ratings && Object.keys((profile as any).question_ratings).length > 0
+                ? { ...(profile as any).question_ratings, ...state.questionRatings }
+                : state.questionRatings,
+              friendList: (profile as any).friend_list?.length > 0
+                ? (() => {
+                    const ids = new Set(state.friendList.map((f: any) => f.telegramId));
+                    return [...state.friendList, ...(profile as any).friend_list.filter((f: any) => !ids.has(f.telegramId))];
+                  })()
+                : state.friendList,
+              clanId: state.clanId || (profile as any).clan_id || null,
+              clanName: state.clanName || (profile as any).clan_name || null,
+              notificationsEnabled: state.notificationsEnabled || (profile as any).notifications_enabled || false,
+              seasonStart: state.seasonStart || (profile as any).season_start || null,
+              dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
+              dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
+              dailyChainDate: (profile as any).daily_chain_date || state.dailyChainDate,
             };
 
             set({
@@ -618,6 +655,17 @@ export const useQuizStore = create<QuizState>()(
             season_score: state.seasonScore,
             category_stats: state.categoryStats as any,
             games_by_day: state.gamesByDay as any,
+            // V4.0 fields
+            profile_frame: state.profileFrame,
+            referral_count: state.referralCount,
+            season_pass_tier: state.seasonPassTier,
+            season_pass_claimed: state.seasonPassClaimed,
+            question_ratings: state.questionRatings as any,
+            friend_list: state.friendList as any,
+            clan_id: state.clanId,
+            clan_name: state.clanName,
+            notifications_enabled: state.notificationsEnabled,
+            season_start: state.seasonStart,
           } as any);
 
           await updateLeaderboard(
@@ -1694,3 +1742,4 @@ export const useQuizStore = create<QuizState>()(
 );
 
 export { calcLevel, calcXpForLevel };
+
