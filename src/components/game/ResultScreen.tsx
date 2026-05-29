@@ -25,11 +25,9 @@ export default function ResultScreen() {
     setPhase,
     finishDuelCreator,
     finishDuelChallenger,
-    telegramId,
   } = useQuizStore();
 
-  const { haptic, tg, isInTelegram, platform, isInVK } = useTelegram();
-  const pShare = usePlatform().share;
+  const { haptic, tg, isInTelegram } = useTelegram();
 
   const correctCount = answers.filter(a => a.isCorrect).length;
   const totalQuestions = questions.length;
@@ -77,23 +75,6 @@ export default function ResultScreen() {
 
   const newXPAchievements = newAchievements.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
 
-  // Build the referral URL — includes ref parameter if player has a telegramId
-  const referralUrl = telegramId
-    ? `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${telegramId}`
-    : 'https://t.me/kvizlik_bot/kvizlik';
-
-  // Share message formatted for Telegram
-  const shareMessage = isSurvival
-    ? `🧠 КВИЗЛИК — Выживание!\n\n📊 Счёт: ${roundScore}\n💀 Продержался: ${correctCount}\n🔥 Рекорд: ${survivalRecord}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`
-    : `🧠 КВИЗЛИК — Мой результат!\n\n📊 Счёт: ${roundScore}\n✅ Правильных: ${correctCount}/${totalQuestions}\n🔥 Серия: ${bestStreak}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`;
-
-  // Share results — works on Telegram, VK, and web
-  const handleShareToTelegram = () => {
-    haptic('light');
-    pShare(referralUrl, shareMessage);
-  };
-
-  // Legacy share handler (clipboard fallback)
   const shareText = isSurvival
     ? `🧠 КВИЗЛИК — Выживание\n\nЯ продержался ${correctCount} вопросов!\n💀 Рекорд: ${survivalRecord}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`
     : `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
@@ -271,9 +252,7 @@ export default function ResultScreen() {
               onClick={() => {
                 haptic('light');
                 const text = `⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠\n${duelShareLink}`;
-                if (isInVK) {
-                  pShare(duelShareLink, text);
-                } else if (isInTelegram && tg) {
+                if (isInTelegram && tg) {
                   try {
                     tg.openTelegramLink(
                       `https://t.me/share/url?url=${encodeURIComponent(duelShareLink)}&text=${encodeURIComponent('⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠')}`
@@ -312,33 +291,21 @@ export default function ResultScreen() {
               <RotateCcw className="w-4 h-4" /> Играть снова
             </motion.button>
 
-            {/* Share Results to Telegram — prominent button */}
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.55 }}
               whileTap={{ scale: 0.97 }}
-              onClick={handleShareToTelegram}
-              className="w-full bg-gradient-to-r from-[#2AABEE] to-[#229ED9] hover:from-[#2AABEE] hover:to-[#229ED9] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#2AABEE]/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+              onClick={handleShare}
+              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
-              <Share2 className="w-4 h-4" /> Поделиться результатом
+              <Share2 className="w-4 h-4" /> Поделиться
             </motion.button>
 
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleShare}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Share2 className="w-4 h-4" /> Скопировать результат
-            </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.65 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
               className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
@@ -351,5 +318,3 @@ export default function ResultScreen() {
     </div>
   );
 }
-
-
