@@ -151,7 +151,12 @@
 /* Text inside Tailwind gradient containers should stay white */
 .light .bg-gradient-to-r .text-white,
 .light .bg-gradient-to-br .text-white,
-.light .bg-gradient-to-l .text-white {
+.light .bg-gradient-to-l .text-white,
+.light .bg-gradient-to-t .text-white,
+.light .bg-gradient-to-b .text-white,
+.light .bg-gradient-to-tl .text-white,
+.light .bg-gradient-to-tr .text-white,
+.light .bg-gradient-to-bl .text-white {
   color: white !important;
 }
 
@@ -202,6 +207,59 @@
 
 /* Fun fact box text in light mode */
 .light .text-blue-300\/80 { color: rgba(29, 78, 216, 0.8) !important; }
+
+/* ===== Light mode: additional text color fixes ===== */
+/* Gray text variants for better readability */
+.light .text-gray-400 { color: #6b7280 !important; }
+.light .text-gray-500 { color: #6b7280 !important; }
+.light .text-gray-300 { color: #9ca3af !important; }
+
+/* Yellow/amber text for light mode */
+.light .text-yellow-400 { color: #b45309 !important; }
+.light .text-yellow-300 { color: #b45309 !important; }
+
+/* Green text for light mode */
+.light .text-green-400 { color: #16a34a !important; }
+
+/* Red text for light mode */
+.light .text-red-400 { color: #dc2626 !important; }
+
+/* Purple text for light mode */
+.light .text-purple-400 { color: #7c3aed !important; }
+.light .text-purple-300 { color: #8b5cf6 !important; }
+
+/* Blue text for light mode */
+.light .text-blue-400 { color: #2563eb !important; }
+
+/* Cyan text for light mode */
+.light .text-cyan-400 { color: #0891b2 !important; }
+
+/* Orange text for light mode */
+.light .text-orange-400 { color: #ea580c !important; }
+
+/* Pink text for light mode */
+.light .text-pink-400 { color: #db2777 !important; }
+
+/* Emerald text for light mode */
+.light .text-emerald-400 { color: #059669 !important; }
+
+/* Indigo text for light mode */
+.light .text-indigo-400 { color: #4f46e5 !important; }
+
+/* ===== Light mode: bg-black/XX → bg-dark/XX ===== */
+.light .bg-black\/20 { background-color: rgba(26, 18, 53, 0.08) !important; }
+.light .bg-black\/30 { background-color: rgba(26, 18, 53, 0.12) !important; }
+.light .bg-black\/40 { background-color: rgba(26, 18, 53, 0.16) !important; }
+.light .bg-black\/50 { background-color: rgba(26, 18, 53, 0.20) !important; }
+.light .bg-black\/60 { background-color: rgba(26, 18, 53, 0.24) !important; }
+
+/* ===== Light mode: ring colors ===== */
+.light .ring-white\/10 { --tw-ring-color: rgba(26, 18, 53, 0.1) !important; }
+.light .ring-white\/20 { --tw-ring-color: rgba(26, 18, 53, 0.15) !important; }
+
+/* ===== Light mode: shadow colors ===== */
+.light .shadow-white\/5 { --tw-shadow-color: rgba(26, 18, 53, 0.03) !important; }
+.light .shadow-white\/10 { --tw-shadow-color: rgba(26, 18, 53, 0.06) !important; }
 
 @layer base {
   * {
