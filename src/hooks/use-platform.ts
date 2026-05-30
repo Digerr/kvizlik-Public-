@@ -159,6 +159,8 @@ export function usePlatform() {
 
   // VK theme change listener
   const [vkTheme, setVkTheme] = useState<'light' | 'dark'>('dark');
+  // VK iOS inset_top (for safe area under VK header)
+  const [vkInsetTop, setVkInsetTop] = useState<number>(0);
 
   // VK Pull-to-refresh handler
   function subscribeToRefresh(callback: () => void) {
@@ -176,6 +178,13 @@ export function usePlatform() {
               setVkTheme('light');
             } else {
               setVkTheme('dark');
+            }
+            // iOS: VK sends inset_top for the space under VK header
+            const insetTop = event?.data?.inset_top;
+            if (typeof insetTop === 'number' && insetTop > 0) {
+              setVkInsetTop(insetTop);
+              // Also set CSS variable for immediate use
+              document.documentElement.style.setProperty('--vk-inset-top', `${insetTop}px`);
             }
           }
           if (event?.type === 'VKWebAppRefresh') {
@@ -351,5 +360,5 @@ export function usePlatform() {
     expand,
   };
 
-  return { ...adapter, vkUser, tgUser, getReferralLink, vkTheme, subscribeToRefresh };
+  return { ...adapter, vkUser, tgUser, getReferralLink, vkTheme, vkInsetTop, subscribeToRefresh };
 }
