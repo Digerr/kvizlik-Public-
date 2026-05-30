@@ -125,76 +125,83 @@
   --sidebar-ring: oklch(0.541 0.281 293.009);
 }
 
+/* ===== Light mode body & scrollbar ===== */
 .light body {
   color: #1a1235;
 }
-
 .light ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
 }
 
-
-/* Light mode overrides - convert hardcoded text-white to dark text */
+/* ===== Light mode: text color adaptation ===== */
+/* Convert text-white to dark text for readability on light backgrounds */
 .light .text-white {
   color: #1a1235 !important;
 }
-.light .text-white\/40 {
-  color: rgba(26, 18, 53, 0.4) !important;
+/* BUT: buttons should always keep white text (they have colored/gradient backgrounds) */
+.light button.text-white,
+.light a.text-white {
+  color: white !important;
 }
-.light .text-white\/50 {
-  color: rgba(26, 18, 53, 0.5) !important;
+/* Text inside gradient containers should stay white */
+.light [style*="linear-gradient"] .text-white,
+.light [style*="background-image"] .text-white {
+  color: white !important;
 }
-.light .text-white\/60 {
-  color: rgba(26, 18, 53, 0.6) !important;
+/* Text inside Tailwind gradient containers should stay white */
+.light .bg-gradient-to-r .text-white,
+.light .bg-gradient-to-br .text-white,
+.light .bg-gradient-to-l .text-white {
+  color: white !important;
 }
-.light .text-white\/70 {
-  color: rgba(26, 18, 53, 0.7) !important;
-}
-.light .text-white\/80 {
-  color: rgba(26, 18, 53, 0.8) !important;
-}
-.light .text-white\/90 {
-  color: rgba(26, 18, 53, 0.9) !important;
-}
-.light .text-white\/15 {
-  color: rgba(26, 18, 53, 0.15) !important;
-}
-.light .text-white\/20 {
-  color: rgba(26, 18, 53, 0.2) !important;
-}
-.light .text-white\/30 {
-  color: rgba(26, 18, 53, 0.3) !important;
-}
-.light .text-white\/10 {
-  color: rgba(26, 18, 53, 0.1) !important;
-}
-.light .text-white\/5 {
-  color: rgba(26, 18, 53, 0.05) !important;
-}
-.light .border-white\/10 {
-  border-color: rgba(26, 18, 53, 0.1) !important;
-}
-.light .border-white\/5 {
-  border-color: rgba(26, 18, 53, 0.05) !important;
-}
-.light .border-white\/20 {
-  border-color: rgba(26, 18, 53, 0.15) !important;
-}
-.light .border-white\/30 {
-  border-color: rgba(26, 18, 53, 0.2) !important;
-}
-.light .bg-white\/10 {
-  background-color: rgba(26, 18, 53, 0.06) !important;
-}
-.light .bg-white\/5 {
-  background-color: rgba(26, 18, 53, 0.03) !important;
-}
-.light .bg-white {
-  background-color: #1a1235 !important;
-}
+
+/* text-white opacity variants → dark text with same opacity */
+.light .text-white\/5 { color: rgba(26, 18, 53, 0.05) !important; }
+.light .text-white\/10 { color: rgba(26, 18, 53, 0.1) !important; }
+.light .text-white\/15 { color: rgba(26, 18, 53, 0.15) !important; }
+.light .text-white\/20 { color: rgba(26, 18, 53, 0.2) !important; }
+.light .text-white\/30 { color: rgba(26, 18, 53, 0.3) !important; }
+.light .text-white\/40 { color: rgba(26, 18, 53, 0.4) !important; }
+.light .text-white\/50 { color: rgba(26, 18, 53, 0.5) !important; }
+.light .text-white\/60 { color: rgba(26, 18, 53, 0.6) !important; }
+.light .text-white\/70 { color: rgba(26, 18, 53, 0.7) !important; }
+.light .text-white\/80 { color: rgba(26, 18, 53, 0.8) !important; }
+.light .text-white\/90 { color: rgba(26, 18, 53, 0.9) !important; }
+
+/* ===== Light mode: borders ===== */
+.light .border-white\/5 { border-color: rgba(26, 18, 53, 0.05) !important; }
+.light .border-white\/10 { border-color: rgba(26, 18, 53, 0.1) !important; }
+.light .border-white\/20 { border-color: rgba(26, 18, 53, 0.15) !important; }
+.light .border-white\/30 { border-color: rgba(26, 18, 53, 0.2) !important; }
+
+/* ===== Light mode: subtle backgrounds ===== */
+/* Semi-transparent white overlays → semi-transparent dark overlays */
+.light .bg-white\/5 { background-color: rgba(26, 18, 53, 0.03) !important; }
+.light .bg-white\/10 { background-color: rgba(26, 18, 53, 0.06) !important; }
+/* bg-white should STAY white in light mode (used intentionally for white backgrounds) */
+
+/* Ensure theme-bg class works in light mode */
 .light .bg-\[var\(--theme-bg\)\] {
   background-color: var(--theme-bg) !important;
 }
+
+/* ===== Light mode: game option colors ===== */
+/* Light-colored text designed for dark bg becomes darker for light bg readability */
+.light .text-purple-200 { color: #7c3aed !important; }
+.light .text-purple-300 { color: #7c3aed !important; }
+.light .text-green-300 { color: #15803d !important; }
+.light .text-red-300 { color: #dc2626 !important; }
+.light .text-yellow-200 { color: #a16207 !important; }
+.light .text-blue-300 { color: #1d4ed8 !important; }
+
+/* Option label badges: subtler backgrounds in light mode */
+.light .bg-purple-500\/30 { background-color: rgba(124, 58, 237, 0.15) !important; }
+.light .bg-green-500\/30 { background-color: rgba(34, 197, 94, 0.15) !important; }
+.light .bg-red-500\/30 { background-color: rgba(239, 68, 68, 0.15) !important; }
+.light .bg-yellow-500\/30 { background-color: rgba(234, 179, 8, 0.15) !important; }
+
+/* Fun fact box text in light mode */
+.light .text-blue-300\/80 { color: rgba(29, 78, 216, 0.8) !important; }
 
 @layer base {
   * {
