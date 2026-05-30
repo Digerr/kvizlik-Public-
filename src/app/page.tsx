@@ -435,14 +435,11 @@ export default function Home() {
   
   // Show onboarding for first-time users
   const showOnboarding = !hasSeenTutorial;
-  
-  const Component = phaseComponents[effectivePhase] || HomeScreen;
 
-  // Detect unsupported browsers
+  // Detect unsupported browsers (MUST be before effectivePhase and Component)
   const isUnsupported = typeof window !== 'undefined' && (() => {
     try {
       const ua = navigator.userAgent;
-      // Very old browsers detection
       const isOldAndroid = /Android [1-4]/.test(ua);
       const isOldIOS = /iPhone OS [1-9]_/.test(ua) && !/iPhone OS 1[0-9]/.test(ua);
       const isOperaMini = /Opera Mini/.test(ua);
@@ -452,6 +449,7 @@ export default function Home() {
   })();
 
   const effectivePhase = isUnsupported ? 'unsupported' : showOnboarding ? 'onboarding' : phase;
+  const Component = phaseComponents[effectivePhase] || HomeScreen;
 
   useDuelUrlHandler();
   const { gamesPlayedToday, showReminder } = useCloudSync();
