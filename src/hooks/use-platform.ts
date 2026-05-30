@@ -170,14 +170,12 @@ export function usePlatform() {
           // Handle VK theme changes
           if (event?.type === 'VKWebAppUpdateConfig') {
             const scheme = event?.data?.scheme;
+            // Just track VK theme preference, don't auto-switch
+            // Light/dark mode is controlled by the selected theme in ThemeProvider
             if (scheme === 'bright_light') {
               setVkTheme('light');
-              document.documentElement.classList.remove('dark');
-              document.documentElement.classList.add('light');
             } else {
               setVkTheme('dark');
-              document.documentElement.classList.remove('light');
-              document.documentElement.classList.add('dark');
             }
           }
           if (event?.type === 'VKWebAppRefresh') {
