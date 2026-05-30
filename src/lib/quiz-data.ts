@@ -226,6 +226,20 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   {
+    id: "light_theme",
+    name: "Светлая", desc: "Светлая тема для комфортной игры",
+    emoji: "☀️",
+    unlockCondition: "default",
+    unlockValue: 0,
+    colors: {
+      bg: "#f5f3ff",
+      card: "#ffffff",
+      cardHover: "#f0ecff",
+      accentFrom: "#7c3aed",
+      accentTo: "#3b82f6",
+    },
+  },
+  {
     id: "neon",
     name: "Неоновая ночь", desc: "Тёмный фон с неоновым свечением",
     emoji: "🌙",
