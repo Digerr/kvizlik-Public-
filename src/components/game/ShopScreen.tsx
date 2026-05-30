@@ -38,17 +38,17 @@ export default function ShopScreen() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-4 flex flex-col">
+    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <button
           onClick={() => { haptic('light'); setPhase('home'); }}
-          className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
+          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
         >
           <ArrowLeft className="w-4 h-4 text-white/70" />
         </button>
         <h2 className="text-white font-bold text-lg">Магазин</h2>
-        <div className="ml-auto flex items-center gap-1 bg-[#1a1235] border border-white/10 rounded-xl px-3 py-1.5">
+        <div className="ml-auto flex items-center gap-1 bg-[var(--theme-card)] border border-white/10 rounded-xl px-3 py-1.5">
           <span className="text-sm">🪙</span>
           <span className="text-yellow-400 font-bold text-sm">{coins}</span>
         </div>
@@ -61,7 +61,7 @@ export default function ShopScreen() {
           className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
             tab === 'bonuses'
               ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
-              : 'bg-[#1a1235] border border-white/10 text-white/50 hover:bg-[#221a45]'
+              : 'bg-[var(--theme-card)] border border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)]'
           }`}
         >
           Бонусы
@@ -71,7 +71,7 @@ export default function ShopScreen() {
           className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
             tab === 'avatars'
               ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
-              : 'bg-[#1a1235] border border-white/10 text-white/50 hover:bg-[#221a45]'
+              : 'bg-[var(--theme-card)] border border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)]'
           }`}
         >
           Аватары
@@ -91,9 +91,9 @@ export default function ShopScreen() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 flex items-center gap-3"
+                  className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 flex items-center gap-3"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-[#251d45] flex items-center justify-center text-2xl border border-white/10">
+                  <div className="w-12 h-12 rounded-xl bg-[var(--theme-card-hover)] flex items-center justify-center text-2xl border border-white/10">
                     {pu.emoji}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -133,7 +133,7 @@ export default function ShopScreen() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className={`bg-[#1a1235] border rounded-2xl p-3.5 flex flex-col items-center text-center ${
+                  className={`bg-[var(--theme-card)] border rounded-2xl p-3.5 flex flex-col items-center text-center ${
                     equipped ? 'border-purple-500/50' : 'border-white/10'
                   }`}
                 >
