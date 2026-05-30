@@ -48,6 +48,10 @@ export default function ThemesScreen() {
   };
 
   const handleSelect = (theme: ThemeDef) => {
+    // Auto-unlock default themes if they somehow got removed from unlockedThemes
+    if (!isUnlocked(theme) && theme.unlockCondition === 'default') {
+      useQuizStore.getState().unlockTheme(theme.id);
+    }
     if (!isUnlocked(theme)) {
       haptic('error');
       return;
