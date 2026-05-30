@@ -471,7 +471,7 @@ const INITIAL_STATE = {
   leaderboard: [] as LeaderboardEntry[],
   // New features
   currentTheme: "neon",
-  unlockedThemes: ["neon"] as string[],
+  unlockedThemes: ["neon", "light_theme"] as string[],
   duelsWon: 0,
   duelsPlayed: 0,
   pendingChest: null as ChestReward | null,
