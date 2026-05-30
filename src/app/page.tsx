@@ -436,7 +436,6 @@ export default function Home() {
   // Show onboarding for first-time users
   const showOnboarding = !hasSeenTutorial;
   
-  const effectivePhase = isUnsupported ? 'unsupported' : showOnboarding ? 'onboarding' : phase;
   const Component = phaseComponents[effectivePhase] || HomeScreen;
 
   // Detect unsupported browsers
@@ -451,6 +450,8 @@ export default function Home() {
       return isOldAndroid || isOldIOS || isOperaMini || isUCBrowser;
     } catch { return false; }
   })();
+
+  const effectivePhase = isUnsupported ? 'unsupported' : showOnboarding ? 'onboarding' : phase;
 
   useDuelUrlHandler();
   const { gamesPlayedToday, showReminder } = useCloudSync();
