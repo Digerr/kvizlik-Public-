@@ -375,34 +375,26 @@ function ReminderBanner({
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { currentTheme } = useQuizStore();
   const theme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
-  const platform = detectPlatform();
+  const isLightTheme = currentTheme === 'light_theme';
 
-  // Detect and apply platform theme (light/dark)
+  // Apply light/dark mode based on selected theme (not auto-detected from platform)
   useEffect(() => {
     const root = document.documentElement;
-
-    // Check Telegram theme
-    if (platform === 'telegram' && window.Telegram?.WebApp) {
-      const tgTheme = window.Telegram.WebApp.colorScheme;
-      if (tgTheme === 'light') {
-        root.classList.remove('dark');
-        root.classList.add('light');
-      } else {
-        root.classList.remove('light');
-        root.classList.add('dark');
-      }
+    if (isLightTheme) {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    } else {
+      root.classList.remove('light');
+      root.classList.add('dark');
     }
-    // VK theme is handled by use-platform.ts VKWebAppUpdateConfig listener
-    // Web defaults to dark
-  }, [platform]);
+  }, [isLightTheme]);
 
-  // Apply theme colors (override with light variants if in light mode)
+  // Apply theme colors
   useEffect(() => {
     const root = document.documentElement;
-    const isLight = root.classList.contains('light');
 
-    if (isLight) {
-      // Light mode: use light-appropriate colors
+    if (isLightTheme) {
+      // Light mode: use light-appropriate backgrounds with theme accent colors
       root.style.setProperty('--theme-bg', '#f5f3ff');
       root.style.setProperty('--theme-card', '#ffffff');
       root.style.setProperty('--theme-card-hover', '#f0ecff');
@@ -421,7 +413,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       root.style.removeProperty('--theme-text-accent');
     }
-  }, [currentTheme, theme]);
+  }, [currentTheme, theme, isLightTheme]);
 
   return <>{children}</>;
 }
