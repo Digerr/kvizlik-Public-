@@ -436,15 +436,13 @@ export default function Home() {
   // Show onboarding for first-time users
   const showOnboarding = !hasSeenTutorial;
 
-  // Detect unsupported browsers (MUST be before effectivePhase and Component)
+  // Detect truly unsupported browsers (very conservative - only ancient browsers)
   const isUnsupported = typeof window !== 'undefined' && (() => {
     try {
       const ua = navigator.userAgent;
-      const isOldAndroid = /Android [1-4]/.test(ua);
-      const isOldIOS = /iPhone OS [1-9]_/.test(ua) && !/iPhone OS 1[0-9]/.test(ua);
-      const isOperaMini = /Opera Mini/.test(ua);
-      const isUCBrowser = /UCBrowser/.test(ua) && parseFloat(ua.match(/UCBrowser\/([\d.]+)/)?.[1] || '99') < 12;
-      return isOldAndroid || isOldIOS || isOperaMini || isUCBrowser;
+      // Only detect Opera Mini in extreme compression mode (no JS support)
+      const isOperaMini = /Opera Mini\/([\d.]+)/.test(ua) && parseFloat(ua.match(/Opera Mini\/([\d.]+)/)?.[1] || '99') < 7;
+      return isOperaMini;
     } catch { return false; }
   })();
 
