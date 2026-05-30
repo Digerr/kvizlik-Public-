@@ -552,7 +552,10 @@ export const useQuizStore = create<QuizState>()(
               seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
               categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
               currentTheme: state.currentTheme,  // Always keep local theme choice
-              unlockedThemes: (profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+              unlockedThemes: [...new Set([
+                ...(profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+                'neon', 'light_theme'  // Default themes always available
+              ])],
               duelsWon: (profile as any).duels_won || 0,
               duelsPlayed: (profile as any).duels_played || 0,
               survivalRecord: (profile as any).survival_record || 0,
@@ -595,7 +598,10 @@ export const useQuizStore = create<QuizState>()(
               categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
               // New fields from cloud
               currentTheme: state.currentTheme,  // Always keep local theme choice
-              unlockedThemes: (profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+              unlockedThemes: [...new Set([
+                ...(profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
+                'neon', 'light_theme'  // Default themes always available
+              ])],
               duelsWon: Math.max((profile as any).duels_won || 0, state.duelsWon),
               duelsPlayed: Math.max((profile as any).duels_played || 0, state.duelsPlayed),
               survivalRecord: Math.max((profile as any).survival_record || 0, state.survivalRecord),
