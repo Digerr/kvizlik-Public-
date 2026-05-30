@@ -29,7 +29,7 @@ import UnsupportedScreen from '@/components/game/UnsupportedScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
-import { detectPlatform } from '@/hooks/use-platform';
+import { detectPlatform, usePlatform } from '@/hooks/use-platform';
 
 const phaseComponents: Record<string, React.ComponentType> = {
   home: HomeScreen,
@@ -424,6 +424,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export default function Home() {
   const { phase, hasSeenTutorial, setHasSeenTutorial } = useQuizStore();
+  const { vkInsetTop } = usePlatform();
   
   // Show onboarding for first-time users
   const showOnboarding = !hasSeenTutorial;
@@ -486,7 +487,10 @@ export default function Home() {
 
   return (
     <ThemeProvider>
-      <main className="min-h-[100dvh] bg-[var(--theme-bg)] overflow-hidden">
+      <main
+        className="min-h-[100dvh] bg-[var(--theme-bg)] overflow-hidden"
+        style={vkInsetTop > 0 ? { paddingTop: vkInsetTop } : undefined}
+      >
         {/* Notification reminder banner – only shown on home screen */}
         <AnimatePresence>
           {!showOnboarding && phase === 'home' && showBanner && motivationalMessage && (
