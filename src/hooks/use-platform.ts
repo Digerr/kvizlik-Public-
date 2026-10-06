@@ -20,10 +20,16 @@ interface PlatformAdapter {
   userName: string | null;
   userPhoto: string | null;
   isInApp: boolean;
-  haptic: (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => void;
+  haptic: (
+    type: "light" | "medium" | "heavy" | "success" | "error" | "warning",
+  ) => void;
   share: (url: string, text: string) => void;
   shareDuel: (duelLink: string, duelText: string) => void;
-  showPopup: (params: { title?: string; message: string; buttons?: any[] }) => void;
+  showPopup: (params: {
+    title?: string;
+    message: string;
+    buttons?: any[];
+  }) => void;
   openLink: (url: string) => void;
   ready: () => void;
   expand: () => void;
@@ -34,10 +40,16 @@ export function detectPlatform(): Platform {
   if (typeof window === "undefined") return "web";
   try {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("vk_user_id") || url.searchParams.has("vk_platform")) return "vk";
+    if (
+      url.searchParams.has("vk_user_id") ||
+      url.searchParams.has("vk_platform")
+    )
+      return "vk";
     if (window.Telegram?.WebApp?.initDataUnsafe?.user) return "telegram";
     if (window.Telegram?.WebApp?.initData) return "telegram";
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return "web";
 }
 
@@ -46,10 +58,10 @@ function sendVK(method: string, params?: Record<string, any>): Promise<any> {
   return new Promise((resolve, reject) => {
     try {
       const bridge = (window as any).vkBridge || (window as any).VKBridge;
-      if (bridge && typeof bridge.send === 'function') {
+      if (bridge && typeof bridge.send === "function") {
         bridge.send(method, params).then(resolve).catch(reject);
       } else {
-        reject(new Error('VK Bridge not available'));
+        reject(new Error("VK Bridge not available"));
       }
     } catch (e) {
       reject(e);
@@ -60,7 +72,7 @@ function sendVK(method: string, params?: Record<string, any>): Promise<any> {
 function isVKBridgeAvailable(): boolean {
   try {
     const bridge = (window as any).vkBridge || (window as any).VKBridge;
-    return bridge && typeof bridge.send === 'function';
+    return bridge && typeof bridge.send === "function";
   } catch {
     return false;
   }
@@ -76,20 +88,6 @@ export function usePlatform() {
   const [vkUser, setVkUser] = useState<VKUserInfo | null>(null);
   const [tgUser, setTgUser] = useState<any | null>(null);
 
-  useEffect(() => {
-    const detected = detectPlatform();
-    setPlatform(detected);
-
-    if (detected === "vk") {
-      setIsInApp(true);
-      initVK();
-    } else if (detected === "telegram") {
-      setIsInApp(true);
-      initTelegram();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   async function initVK() {
     try {
       const urlParams = new URLSearchParams(window.location.search);
@@ -101,11 +99,13 @@ export function usePlatform() {
         useQuizStore.getState().setTelegramId(uid);
 
         // Step 1: Wait for VK Bridge to load (it's loaded via CDN script)
-        const waitForBridge = async (maxWait: number = 5000): Promise<boolean> => {
+        const waitForBridge = async (
+          maxWait: number = 5000,
+        ): Promise<boolean> => {
           const start = Date.now();
           while (Date.now() - start < maxWait) {
             if (isVKBridgeAvailable()) return true;
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise((r) => setTimeout(r, 100));
           }
           return isVKBridgeAvailable();
         };
@@ -114,7 +114,9 @@ export function usePlatform() {
 
         // Step 2: Initialize the VK app FIRST (required before other API calls)
         if (bridgeReady) {
-          try { await sendVK("VKWebAppInit"); } catch (e) {
+          try {
+            await sendVK("VKWebAppInit");
+          } catch (e) {
             console.warn("VKWebAppInit failed:", e);
           }
         }
@@ -123,15 +125,25 @@ export function usePlatform() {
         if (bridgeReady) {
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const userInfo = await sendVK("VKWebAppGetUserInfo", { user_id: Number(vkUserId) });
+              const userInfo = await sendVK("VKWebAppGetUserInfo", {
+                user_id: Number(vkUserId),
+              });
               if (userInfo) {
                 const firstName = userInfo.first_name || "Игрок";
                 const lastName = userInfo.last_name || "";
-                const fullName = lastName ? `${firstName} ${lastName}` : firstName;
+                const fullName = lastName
+                  ? `${firstName} ${lastName}`
+                  : firstName;
                 const photo = userInfo.photo_100 || userInfo.photo_200 || null;
                 setUserName(fullName);
                 setUserPhoto(photo);
-                setVkUser({ id: Number(vkUserId), first_name: firstName, last_name: lastName, photo_100: photo, photo_200: userInfo.photo_200 || null });
+                setVkUser({
+                  id: Number(vkUserId),
+                  first_name: firstName,
+                  last_name: lastName,
+                  photo_100: photo,
+                  photo_200: userInfo.photo_200 || null,
+                });
                 // Always update store with real VK name
                 useQuizStore.getState().setPlayerName(fullName);
                 useQuizStore.getState().setUserPhoto(photo);
@@ -139,10 +151,13 @@ export function usePlatform() {
                 return;
               }
             } catch (e) {
-              console.warn(`VKWebAppGetUserInfo attempt ${attempt + 1} failed:`, e);
+              console.warn(
+                `VKWebAppGetUserInfo attempt ${attempt + 1} failed:`,
+                e,
+              );
             }
             if (attempt < 2) {
-              await new Promise(r => setTimeout(r, 500));
+              await new Promise((r) => setTimeout(r, 500));
             }
           }
         }
@@ -150,51 +165,57 @@ export function usePlatform() {
         // Fallback if bridge not available or all retries failed
         const fallbackName = "Игрок VK";
         setUserName(fallbackName);
-        if (!useQuizStore.getState().playerName) useQuizStore.getState().setPlayerName(fallbackName);
+        if (!useQuizStore.getState().playerName)
+          useQuizStore.getState().setPlayerName(fallbackName);
         setVkUser({ id: Number(vkUserId), first_name: fallbackName });
         console.warn("[KVIZLIK] VK user info fallback: using default name");
       }
-    } catch (e) { console.error("VK init error:", e); }
+    } catch (e) {
+      console.error("VK init error:", e);
+    }
   }
 
   // VK theme change listener
-  const [vkTheme, setVkTheme] = useState<'light' | 'dark'>('dark');
+  const [vkTheme, setVkTheme] = useState<"light" | "dark">("dark");
   // VK iOS inset_top (for safe area under VK header)
   const [vkInsetTop, setVkInsetTop] = useState<number>(0);
 
   // VK Pull-to-refresh handler
   function subscribeToRefresh(callback: () => void) {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     try {
       const bridge = (window as any).vkBridge || (window as any).VKBridge;
-      if (bridge && typeof bridge.subscribe === 'function') {
+      if (bridge && typeof bridge.subscribe === "function") {
         bridge.subscribe((event: any) => {
           // Handle VK theme changes
-          if (event?.type === 'VKWebAppUpdateConfig') {
+          if (event?.type === "VKWebAppUpdateConfig") {
             const scheme = event?.data?.scheme;
             // Just track VK theme preference, don't auto-switch
             // Light/dark mode is controlled by the selected theme in ThemeProvider
-            if (scheme === 'bright_light') {
-              setVkTheme('light');
+            if (scheme === "bright_light") {
+              setVkTheme("light");
             } else {
-              setVkTheme('dark');
+              setVkTheme("dark");
             }
             // iOS: VK sends inset_top for the space under VK header
             const insetTop = event?.data?.inset_top;
-            if (typeof insetTop === 'number' && insetTop > 0) {
+            if (typeof insetTop === "number" && insetTop > 0) {
               setVkInsetTop(insetTop);
               // Also set CSS variable for immediate use
-              document.documentElement.style.setProperty('--vk-inset-top', `${insetTop}px`);
+              document.documentElement.style.setProperty(
+                "--vk-inset-top",
+                `${insetTop}px`,
+              );
             }
           }
-          if (event?.type === 'VKWebAppRefresh') {
-            console.log('[KVIZLIK] VK pull-to-refresh triggered');
+          if (event?.type === "VKWebAppRefresh") {
+            console.log("[KVIZLIK] VK pull-to-refresh triggered");
             callback();
           }
         });
       }
     } catch (e) {
-      console.warn('[KVIZLIK] VK refresh subscribe failed:', e);
+      console.warn("[KVIZLIK] VK refresh subscribe failed:", e);
     }
   }
 
@@ -224,14 +245,35 @@ export function usePlatform() {
     }
   }
 
+  useEffect(() => {
+    const detected = detectPlatform();
+    // SDK state is available only after client hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlatform(detected);
+
+    if (detected === "vk") {
+      setIsInApp(true);
+      initVK();
+    } else if (detected === "telegram") {
+      setIsInApp(true);
+      initTelegram();
+    }
+  }, []);
+
   // Haptic feedback — works on both platforms
-  const haptic = (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
+  const haptic = (
+    type: "light" | "medium" | "heavy" | "success" | "error" | "warning",
+  ) => {
     try {
       if (platform === "vk" && isVKBridgeAvailable()) {
         if (type === "success" || type === "warning" || type === "error") {
-          sendVK("VKWebAppTapticNotificationOccurred", { type }).catch(() => {});
+          sendVK("VKWebAppTapticNotificationOccurred", { type }).catch(
+            () => {},
+          );
         } else {
-          sendVK("VKWebAppTapticImpactOccurred", { style: type }).catch(() => {});
+          sendVK("VKWebAppTapticImpactOccurred", { style: type }).catch(
+            () => {},
+          );
         }
       } else if (platform === "telegram" && window.Telegram?.WebApp) {
         const tg = window.Telegram.WebApp;
@@ -241,7 +283,9 @@ export function usePlatform() {
           tg.HapticFeedback.impactOccurred(type);
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   // Share — generic share for referrals, results, etc.
@@ -273,7 +317,7 @@ export function usePlatform() {
       } else if (platform === "telegram" && window.Telegram?.WebApp) {
         // Telegram: open share dialog with pre-filled text
         window.Telegram.WebApp.openTelegramLink(
-          `https://t.me/share/url?url=${encodeURIComponent(duelLink)}&text=${encodeURIComponent(duelText)}`
+          `https://t.me/share/url?url=${encodeURIComponent(duelLink)}&text=${encodeURIComponent(duelText)}`,
         );
       } else {
         navigator.clipboard?.writeText(duelText + "\n" + duelLink);
@@ -284,14 +328,23 @@ export function usePlatform() {
   };
 
   // Show popup
-  const showPopup = (params: { title?: string; message: string; buttons?: any[] }) => {
+  const showPopup = (params: {
+    title?: string;
+    message: string;
+    buttons?: any[];
+  }) => {
     try {
       if (platform === "vk" && isVKBridgeAvailable()) {
         sendVK("VKWebAppShowMessageBox", {
           title: params.title || "",
           message: params.message,
           buttons: params.buttons?.map((b: any) => ({
-            type: b.type === "ok" ? "ok" : b.type === "cancel" ? "cancel" : "default",
+            type:
+              b.type === "ok"
+                ? "ok"
+                : b.type === "cancel"
+                  ? "cancel"
+                  : "default",
             title: b.text || "OK",
           })) || [{ type: "ok", title: "OK" }],
         }).catch(() => {
@@ -339,10 +392,15 @@ export function usePlatform() {
   // Get referral link for current platform
   const getReferralLink = () => {
     const tid = useQuizStore.getState().telegramId;
+    if (platform === "web") return window.location.origin;
     if (platform === "vk") {
-      return tid ? `https://vk.com/app54615586?vk_ref=ref_${tid}` : "https://vk.com/app54615586";
+      return tid
+        ? `https://vk.com/app54615586?vk_ref=ref_${tid}`
+        : "https://vk.com/app54615586";
     }
-    return tid ? `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${tid}` : "https://t.me/kvizlik_bot/kvizlik";
+    return tid
+      ? `https://t.me/kvizlik_bot/kvizlik?startapp=ref_${tid}`
+      : "https://t.me/kvizlik_bot/kvizlik";
   };
 
   const adapter: PlatformAdapter = {
@@ -360,5 +418,13 @@ export function usePlatform() {
     expand,
   };
 
-  return { ...adapter, vkUser, tgUser, getReferralLink, vkTheme, vkInsetTop, subscribeToRefresh };
+  return {
+    ...adapter,
+    vkUser,
+    tgUser,
+    getReferralLink,
+    vkTheme,
+    vkInsetTop,
+    subscribeToRefresh,
+  };
 }

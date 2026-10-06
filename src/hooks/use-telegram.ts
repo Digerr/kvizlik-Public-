@@ -13,6 +13,8 @@ interface TelegramUser {
 }
 
 interface TelegramWebApp {
+  initData?: string;
+  requestWriteAccess?: (callback: (granted: boolean) => void) => void;
   ready: () => void;
   close: () => void;
   expand: () => void;

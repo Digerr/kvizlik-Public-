@@ -1,100 +1,59 @@
-'use client';
-
-import { motion } from 'framer-motion';
-import { useQuizStore } from '@/lib/quiz-store';
-import { getMixedQuestions } from '@/lib/quiz-data';
-import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft, Swords } from 'lucide-react';
-
+"use client";
+import { ArrowRight, Swords } from "lucide-react";
+import { useQuizStore } from "@/lib/quiz-store";
+import { getMixedQuestions } from "@/lib/quiz-data";
+import { ScreenHeading } from "./QuizUI";
 export default function DuelScreen() {
-  const { startDuel, setPhase } = useQuizStore();
-  const { haptic } = useTelegram();
-
-  const handleCreateDuel = () => {
-    haptic('medium');
-    const questions = getMixedQuestions(10, []);
-    startDuel(questions);
-  };
-
+  const s = useQuizStore();
   return (
-    <div className="min-h-[100dvh] bg-[#0f0a1e] px-4 py-6 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => { haptic('light'); setPhase('home'); }}
-          className="w-9 h-9 rounded-xl bg-[#1a1235] border border-white/10 flex items-center justify-center hover:bg-[#221a45] active:scale-95 transition-all"
-        >
-          <ArrowLeft className="w-4 h-4 text-white/70" />
-        </button>
-        <h2 className="text-white font-bold text-lg">⚔️ Дуэль</h2>
+    <div className="q-screen">
+      <ScreenHeading title="Кто знает больше?" eyebrow="Дуэль с другом" />
+      <div className="q-duel-art">
+        <span>ТЫ</span>
+        <Swords size={60} />
+        <span>ДРУГ</span>
       </div>
-
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.1 }}
-        className="text-center mb-8"
-      >
-        <div className="text-7xl mb-4">⚔️</div>
-        <h3 className="text-white text-2xl font-black mb-2">Режим дуэли</h3>
-        <p className="text-white/50 text-sm leading-relaxed">
-          Сразись с друзьями! Пройди квиз и отправь ссылку —
-          пусть соперник попробует побить твой счёт.
-        </p>
-      </motion.div>
-
-      {/* How It Works */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-[#1a1235] border border-white/10 rounded-2xl p-4 mb-6"
-      >
-        <p className="text-white/60 text-xs font-medium mb-3 uppercase tracking-wider">Как это работает</p>
-        <div className="flex flex-col gap-3">
-          <div className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs font-bold shrink-0">1</span>
-            <p className="text-white/70 text-sm">Ты отвечаешь на 10 вопросов</p>
+      <h2 className="q-big-title">
+        Один набор вопросов.
+        <br />
+        Два любопытных человека.
+      </h2>
+      <p className="q-intro">
+        Сначала сыграй сам. Потом отправь другу ссылку — он ответит на те же
+        вопросы и сравнит результаты.
+      </p>
+      <ol className="q-steps">
+        <li>
+          <span>01</span>
+          <div>
+            <strong>Пройди 10 вопросов</strong>
+            <p>15 секунд на каждый ответ.</p>
           </div>
-          <div className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs font-bold shrink-0">2</span>
-            <p className="text-white/70 text-sm">Делишься ссылкой с другом</p>
+        </li>
+        <li>
+          <span>02</span>
+          <div>
+            <strong>Отправь вызов</strong>
+            <p>Ссылка появится после раунда.</p>
           </div>
-          <div className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs font-bold shrink-0">3</span>
-            <p className="text-white/70 text-sm">Друг отвечает на те же вопросы</p>
+        </li>
+        <li>
+          <span>03</span>
+          <div>
+            <strong>Пусть друг попробует</strong>
+            <p>Сравнение по числу правильных ответов.</p>
           </div>
-          <div className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400 text-xs font-bold shrink-0">🏆</span>
-            <p className="text-white/70 text-sm">Победитель получает +20 монет!</p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Create Duel Button */}
-      <motion.button
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={handleCreateDuel}
-        className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-lg py-4 rounded-2xl mb-3 shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-3"
+        </li>
+      </ol>
+      <button
+        className="q-primary"
+        onClick={() => s.startDuel(getMixedQuestions(10, s.seenQuestions))}
       >
-        <Swords className="w-5 h-5" /> Создать дуэль
-      </motion.button>
-
-      {/* Info about joining */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="bg-[#1a1235] border border-white/5 rounded-2xl p-4 text-center"
-      >
-        <p className="text-white/40 text-xs">
-          📩 Получил ссылку на дуэль? Просто открой её — и начнётся игра!
-        </p>
-      </motion.div>
+        Создать вызов <ArrowRight size={21} />
+      </button>
+      <p className="q-footnote">
+        Можно играть в разное время. Ждать соперника не нужно.
+      </p>
     </div>
   );
 }

@@ -1,45 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
-
-export async function POST(req: NextRequest) {
+import { NextResponse } from "next/server";
+import { getLeaderboard } from "@/lib/supabase";
+import { validateTelegramInitData } from "@/lib/telegram-auth";
+export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { action, data } = body;
-
-    switch (action) {
-      case "save-session": {
-        // In production, this would save to database
-        // For now, return success
-        return NextResponse.json({ success: true });
+    const { action, data } = await req.json();
+    if (action === "validate-init-data")
+      return NextResponse.json({
+        valid: validateTelegramInitData(
+          data?.initData,
+          process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN,
+        ),
+      });
+    if (action === "get-leaderboard") {
+      try {
+        return NextResponse.json({ leaderboard: await getLeaderboard(50) });
+      } catch {
+        return NextResponse.json(
+          { error: "Рейтинг недоступен" },
+          { status: 503 },
+        );
       }
-
-      case "get-leaderboard": {
-        // Return mock leaderboard - in production would query DB
-        return NextResponse.json({
-          leaderboard: [
-            { name: "КвизМастер", score: 850, avatarId: "crown", league: "diamond" },
-            { name: "Эрудит2024", score: 520, avatarId: "wizard", league: "platinum" },
-            { name: "Знаток", score: 310, avatarId: "dragon", league: "gold" },
-            { name: "Умник", score: 180, avatarId: "cat", league: "gold" },
-            { name: "Любитель", score: 95, avatarId: "owl", league: "silver" },
-            { name: "Новичок", score: 25, avatarId: "default", league: "bronze" },
-          ],
-        });
-      }
-
-      case "validate-init-data": {
-        // Validate Telegram init data
-        const initData = data?.initData;
-        if (!initData) {
-          return NextResponse.json({ valid: false });
-        }
-        // In production, validate with bot token hash
-        return NextResponse.json({ valid: true });
-      }
-
-      default:
-        return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
-  } catch (error) {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    if (action === "save-session")
+      return NextResponse.json(
+        { error: "Этот устаревший метод сохранения отключён" },
+        { status: 410 },
+      );
+    return NextResponse.json(
+      { error: "Неизвестное действие" },
+      { status: 400 },
+    );
+  } catch {
+    return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
   }
 }

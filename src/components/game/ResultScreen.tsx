@@ -1,344 +1,213 @@
-'use client';
-
-import { motion } from 'framer-motion';
-import { useQuizStore, calcLevel, calcXpForLevel } from '@/lib/quiz-store';
-import { LEAGUES, getLeagueByScore, getLeagueProgress, ACHIEVEMENTS } from '@/lib/quiz-data';
-import { useTelegram } from '@/hooks/use-telegram';
-import { usePlatform } from '@/hooks/use-platform';
-import { Trophy, Home, RotateCcw, Share2, Swords, Skull } from 'lucide-react';
-import { playWin, playCoin } from '@/lib/sounds';
-import { useEffect, useState, useCallback } from 'react';
-
+"use client";
+import { useState } from "react";
+import { ArrowRight, Check, Gift, Share2, Swords, X } from "lucide-react";
+import { useQuizStore } from "@/lib/quiz-store";
+import { useTelegram } from "@/hooks/use-telegram";
+import { LEAGUES, getLeagueProgress } from "@/lib/quiz-data";
+import { ScreenHeading } from "./QuizUI";
 export default function ResultScreen() {
-  const {
-    answers,
-    questions,
-    totalScore,
-    currentLeague,
-    bestStreak,
-    totalXP,
-    level,
-    newAchievements,
-    duelMode,
-    gameMode,
-    survivalRecord,
-    playAgain,
-    setPhase,
-    finishDuelCreator,
-    finishDuelChallenger,
-    telegramId,
-  } = useQuizStore();
-
-  const { haptic, platform, isInVK, shareDuel, share, getReferralLink } = useTelegram();
-
-  const correctCount = answers.filter(a => a.isCorrect).length;
-  const totalQuestions = questions.length;
-  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-  const isPerfect = correctCount === totalQuestions && totalQuestions > 0;
-  const isSurvival = gameMode === 'survival';
-
-  useEffect(() => {
-    if (accuracy >= 70) {
-      playWin();
-      if (accuracy === 100) {
-        setTimeout(() => playCoin(), 800);
-      }
-    }
-  }, []);
-
-  const [duelShareLink, setDuelShareLink] = useState<string | null>(null);
-
-  const handleDuelFinish = useCallback(() => {
-    if (duelMode && !useQuizStore.getState().duelData) {
-      const link = finishDuelCreator();
-      setDuelShareLink(link);
-    } else if (duelMode && useQuizStore.getState().duelData) {
-      finishDuelChallenger();
-    }
-  }, [duelMode, finishDuelCreator, finishDuelChallenger]);
-
-  const avgTime = answers.length > 0 ? answers.reduce((s, a) => s + a.timeSpent, 0) / answers.length : 0;
-  let roundScore = correctCount * 10;
-  if (avgTime < 5) roundScore += 5;
-  if (bestStreak >= 5) roundScore += 10;
-  if (bestStreak >= 10) roundScore += 20;
-  if (isPerfect) roundScore += 25;
-
-  if (isSurvival) {
-    const multiplier = 1 + Math.floor(correctCount / 5) * 0.5;
-    roundScore = Math.round(roundScore * Math.min(multiplier, 3));
-  }
-
-  const coinsEarned = Math.ceil(roundScore / 2);
-
-  const league = LEAGUES.find(l => l.id === currentLeague) || LEAGUES[0];
-  const nextLeague = LEAGUES[LEAGUES.indexOf(league) + 1];
-  const leagueProgress = getLeagueProgress(totalScore);
-
-  const newXPAchievements = newAchievements.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
-
-  // Platform-aware referral URL
-  const referralUrl = getReferralLink();
-
-  // Share message — works for both TG and VK
-  const shareMessage = isSurvival
-    ? `🧠 КВИЗЛИК — Выживание!\n\n📊 Счёт: ${roundScore}\n💀 Продержался: ${correctCount}\n🔥 Рекорд: ${survivalRecord}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`
-    : `🧠 КВИЗЛИК — Мой результат!\n\n📊 Счёт: ${roundScore}\n✅ Правильных: ${correctCount}/${totalQuestions}\n🔥 Серия: ${bestStreak}\n🏅 Лига: ${league.emoji} ${league.name}\n\nИграй тоже! 👇`;
-
-  // Share results — cross-platform
-  const handleShareResult = () => {
-    haptic('light');
-    share(referralUrl, shareMessage);
-  };
-
-  // Copy result text to clipboard
-  const handleCopyResult = () => {
-    haptic('light');
-    const text = isSurvival
-      ? `🧠 КВИЗЛИК — Выживание\n\nЯ продержался ${correctCount} вопросов!\n💀 Рекорд: ${survivalRecord}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`
-      : `🧠 КВИЗЛИК\n\nЯ набрал ${roundScore} очков!\n✅ ${correctCount}/${totalQuestions} правильных ответов\n🔥 Лучшая серия: ${bestStreak}\n📊 Лига: ${league.emoji} ${league.name}\n\nПопробуй побить мой рекорд!`;
-    navigator.clipboard.writeText(text).catch(() => {});
-  };
-
-  // Share duel link — cross-platform
-  const handleShareDuel = () => {
-    if (!duelShareLink) return;
-    haptic('light');
-    const text = '⚔️ Вызываю тебя на дуэль в КВИЗЛИК! Пройди те же вопросы и побей мой счёт! 🧠';
-    shareDuel(duelShareLink, text);
-  };
-
-  // Share button label depends on platform
-  const shareButtonLabel = isInVK ? 'Поделиться в VK' : 'Поделиться результатом';
-
-  return (
-    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-6 flex flex-col">
-      {/* Trophy Animation */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.3, rotate: -20 }}
-        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-        transition={{ type: 'spring', damping: 12, stiffness: 100 }}
-        className="text-center mb-6"
-      >
-        <div className="text-6xl mb-2">
-          {isSurvival ? '💀' : isPerfect ? '🏆' : correctCount > totalQuestions / 2 ? '⭐' : '💪'}
-        </div>
-        <h2 className="text-white text-2xl font-black">
-          {isSurvival ? `Выживание: ${correctCount}` : isPerfect ? 'Перфект!' : correctCount > totalQuestions / 2 ? 'Отлично!' : 'Не сдавайся!'}
-        </h2>
-        {isSurvival && (
-          <p className="text-red-400/70 text-sm mt-1">
-            Рекорд: {survivalRecord} правильных
-          </p>
-        )}
-      </motion.div>
-
-      {/* Score Breakdown */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-5 mb-4"
-      >
-        <div className="grid grid-cols-3 gap-4 text-center mb-4">
-          <div>
-            <p className="text-2xl font-black text-green-400">{correctCount}</p>
-            <p className="text-white/40 text-[10px]">из {totalQuestions}</p>
-            <p className="text-white/50 text-xs">правильных</p>
-          </div>
-          <div>
-            <p className="text-2xl font-black text-purple-400">{roundScore}</p>
-            <p className="text-white/40 text-[10px]">очков</p>
-            <p className="text-white/50 text-xs">набрано</p>
-          </div>
-          <div>
-            <p className="text-2xl font-black text-yellow-400">{coinsEarned}</p>
-            <p className="text-white/40 text-[10px]">монет</p>
-            <p className="text-white/50 text-xs">заработано</p>
-          </div>
-        </div>
-
-        {isSurvival && correctCount >= 5 && (
-          <div className="text-center mb-3">
-            <span className="bg-red-500/20 text-red-300 text-[10px] font-bold px-2 py-1 rounded-full">
-              Множитель x{Math.min(1 + Math.floor(correctCount / 5) * 0.5, 3).toFixed(1)}
-            </span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between py-2 border-t border-white/10">
-          <span className="text-white/50 text-sm">Точность</span>
-          <span className="text-white font-bold text-sm">{accuracy}%</span>
-        </div>
-        <div className="flex items-center justify-between py-2 border-t border-white/10">
-          <span className="text-white/50 text-sm">Лучшая серия</span>
-          <span className="text-orange-400 font-bold text-sm">🔥 {bestStreak}</span>
-        </div>
-      </motion.div>
-
-      {/* League Progress */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-4"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{league.emoji}</span>
-            <span className="text-white font-bold text-sm">{league.name}</span>
-          </div>
-          {nextLeague && (
-            <div className="flex items-center gap-2">
-              <span className="text-white/30 text-xs">→</span>
-              <span className="text-lg">{nextLeague.emoji}</span>
-              <span className="text-white/50 text-xs">{nextLeague.name}</span>
-            </div>
-          )}
-        </div>
-        <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${leagueProgress}%` }}
-            transition={{ delay: 0.5, duration: 0.8 }}
-            className="h-full rounded-full"
-            style={{ backgroundColor: league.color }}
-          />
-        </div>
-        <p className="text-white/40 text-[10px] mt-1 text-right">{leagueProgress}% до {nextLeague?.name || 'максимума'}</p>
-      </motion.div>
-
-      {/* New Achievements */}
-      {newXPAchievements.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 mb-4"
-        >
-          <p className="text-yellow-300 font-bold text-sm mb-2">🏅 Новые достижения!</p>
-          {newXPAchievements.map(ach => ach && (
-            <div key={ach.id} className="flex items-center gap-2 py-1">
-              <span className="text-lg">{ach.emoji}</span>
-              <span className="text-white/80 text-sm">{ach.name}</span>
-              <span className="text-yellow-300/60 text-xs ml-auto">+{ach.reward} 🪙</span>
-            </div>
-          ))}
-        </motion.div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="mt-auto flex flex-col gap-2.5">
-        {duelMode && !duelShareLink ? (
-          <>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => { haptic('medium'); handleDuelFinish(); }}
-              className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-            >
-              <Swords className="w-4 h-4" /> Завершить дуэль
-            </motion.button>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.55 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Home className="w-4 h-4" /> На главную
-            </motion.button>
-          </>
-        ) : duelShareLink ? (
-          <>
-            <div className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 mb-2">
-              <p className="text-white/40 text-[10px] mb-2 uppercase tracking-wider">Ссылка для дуэли</p>
-              <p className="text-white/80 text-xs break-all leading-relaxed font-mono">
-                {duelShareLink}
-              </p>
-            </div>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleShareDuel}
-              className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-            >
-              <Swords className="w-4 h-4" /> {isInVK ? 'Поделиться дуэлью в VK' : 'Поделиться дуэлью'}
-            </motion.button>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => {
-                haptic('light');
-                navigator.clipboard.writeText(duelShareLink).catch(() => {});
-              }}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Share2 className="w-4 h-4" /> Скопировать ссылку
-            </motion.button>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Home className="w-4 h-4" /> На главную
-            </motion.button>
-          </>
-        ) : (
-          <>
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => { haptic('light'); playAgain(); }}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" /> Играть снова
-            </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.55 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleShareResult}
-              className="w-full bg-gradient-to-r from-[#2AABEE] to-[#229ED9] hover:from-[#2AABEE] hover:to-[#229ED9] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#2AABEE]/20 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-            >
-              <Share2 className="w-4 h-4" /> {shareButtonLabel}
-            </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleCopyResult}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/80 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Share2 className="w-4 h-4" /> Скопировать результат
-            </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.65 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => { haptic('light'); useQuizStore.setState({ duelMode: false, duelData: null, duelResult: null }); setPhase('home'); }}
-              className="w-full bg-[var(--theme-card)] border border-white/10 text-white/60 font-medium py-3 rounded-2xl hover:bg-[var(--theme-card-hover)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              <Home className="w-4 h-4" /> На главную
-            </motion.button>
-          </>
-        )}
+  const s = useQuizStore();
+  const { platform, share, shareDuel, getReferralLink } = useTelegram();
+  const [review, setReview] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const r = s.roundSummary;
+  if (!r)
+    return (
+      <div className="q-screen">
+        <ScreenHeading title="Твой результат" />
+        <p className="q-intro">Этот раунд уже закрыт. Начнём новый?</p>
+        <button className="q-primary" onClick={() => s.playAgain()}>
+          Играть <ArrowRight size={20} />
+        </button>
       </div>
+    );
+  const league = LEAGUES.find((l) => l.id === s.currentLeague) || LEAGUES[0];
+  const title = s.duelResult
+    ? s.duelResult.myScore === s.duelResult.opponentScore
+      ? "На равных!"
+      : s.duelResult.won
+        ? "Ты победил!"
+        : "Есть реванш."
+    : r.accuracy === 100
+      ? "Без единой ошибки."
+      : r.accuracy >= 70
+        ? "Вот это кругозор!"
+        : r.accuracy >= 40
+          ? "Уже знаешь больше."
+          : "Любопытство — начало.";
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        s.duelShareLink ||
+          `Квизлик: ${r.correct}/${r.answered} правильных, ${r.score} очков. ${getReferralLink()}`,
+      );
+      setCopied(true);
+      setCopyError(false);
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
+  };
+  return (
+    <div className="q-screen q-result">
+      <ScreenHeading
+        title="Раунд завершён"
+        eyebrow={
+          s.gameMode === "survival"
+            ? "Выживание"
+            : s.duelMode
+              ? "Дуэль"
+              : "Новые знания — твои"
+        }
+      />
+      <section className="q-result-hero">
+        <span className="q-eyebrow">
+          {s.duelResult
+            ? `ПРОТИВ ${s.duelResult.opponentName}`
+            : "ПРАВИЛЬНЫЕ ОТВЕТЫ"}
+        </span>
+        <div className="q-result-number">
+          {r.correct}
+          <span>/{r.answered}</span>
+        </div>
+        <h1>{title}</h1>
+        <p>
+          {s.duelResult
+            ? `Твой счёт ${s.duelResult.myScore} · счёт друга ${s.duelResult.opponentScore}`
+            : `${r.accuracy}% точности. Каждый вопрос — маленькое открытие.`}
+        </p>
+      </section>
+      <div className="q-result-stats">
+        <div>
+          <strong>+{r.score}</strong>
+          <span>очков</span>
+        </div>
+        <div>
+          <strong>+{r.coins}</strong>
+          <span>монет за раунд</span>
+        </div>
+        <div>
+          <strong>{r.bestStreak}</strong>
+          <span>лучшая серия</span>
+        </div>
+      </div>
+      {s.pendingChest && (
+        <div className="q-reward-card">
+          <Gift size={26} />
+          <div>
+            <strong>Твой бонус ждёт</strong>
+            <small>
+              Ещё {s.pendingChest.rewards.coins} монет
+              {s.pendingChest.rewards.avatarId ? " и новый аватар" : ""}
+            </small>
+          </div>
+          <button onClick={() => s.openChest()}>Забрать</button>
+        </div>
+      )}
+      <div className="q-league-card">
+        <div>
+          <span>
+            {league.emoji} {league.name}
+          </span>
+          <strong>{s.totalScore} очков</strong>
+        </div>
+        <div className="q-progress">
+          <span style={{ width: `${getLeagueProgress(s.totalScore)}%` }} />
+        </div>
+        <small>
+          {league.id === "diamond"
+            ? "Высшая лига. Продолжай удивлять себя."
+            : "Каждый раунд приближает тебя к следующей лиге."}
+        </small>
+      </div>
+      {s.duelShareLink ? (
+        <button
+          className="q-primary"
+          onClick={() =>
+            platform === "web"
+              ? void copy()
+              : shareDuel(
+                  s.duelShareLink!,
+                  "Пройди те же 10 вопросов и побей мой результат!",
+                )
+          }
+        >
+          <Swords size={20} />
+          {copied ? "Ссылка скопирована" : "Вызвать друга"}
+        </button>
+      ) : (
+        <button className="q-primary" onClick={() => s.playAgain()}>
+          Ещё один раунд <ArrowRight size={21} />
+        </button>
+      )}
+      <div className="q-result-actions">
+        <button
+          className="q-secondary"
+          onClick={() => {
+            if (s.duelShareLink || platform === "web") void copy();
+            else
+              share(
+                getReferralLink(),
+                `Я ответил на ${r.correct} из ${r.answered} вопросов в Квизлике. Попробуешь?`,
+              );
+          }}
+        >
+          <Share2 size={17} />
+          {copied
+            ? "Ссылка скопирована"
+            : s.duelShareLink
+              ? "Скопировать вызов"
+              : "Поделиться"}
+        </button>
+        <button
+          className="q-secondary"
+          aria-expanded={review}
+          onClick={() => setReview(!review)}
+        >
+          {review ? "Скрыть ответы" : "Разобрать ответы"}
+        </button>
+      </div>
+      {copyError && (
+        <p role="alert" className="q-footnote">
+          Не удалось скопировать.{" "}
+          {s.duelShareLink && (
+            <input
+              aria-label="Ссылка на дуэль"
+              readOnly
+              value={s.duelShareLink}
+              onFocus={(e) => e.target.select()}
+            />
+          )}
+        </p>
+      )}
+      {review && (
+        <div className="q-review">
+          {s.answers.map((a, i) => {
+            const q = s.questions.find((q) => q.id === a.questionId);
+            if (!q) return null;
+            return (
+              <article key={`${a.questionId}-${i}`}>
+                <div className="q-review-label">
+                  {a.isCorrect ? <Check size={16} /> : <X size={16} />}ВОПРОС{" "}
+                  {i + 1}
+                </div>
+                <h3>{q.question}</h3>
+                {!a.isCorrect && (
+                  <p>
+                    Твой ответ:{" "}
+                    {a.selectedOption < 0
+                      ? "Время вышло"
+                      : q.options[a.selectedOption]}
+                  </p>
+                )}
+                <strong>{q.options[q.correctIndex]}</strong>
+                <p>{q.funFact}</p>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

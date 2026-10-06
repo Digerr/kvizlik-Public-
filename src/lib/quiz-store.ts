@@ -1,3 +1,6 @@
+import { summarizeRound, localDate, type RoundSummary } from "./round";
+import { duelUrl } from "./duel";
+import { getMixedQuestions, getQuestionsByDifficulty } from "./quiz-data";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -8,6 +11,7 @@ import {
   getActiveCombo,
   POWER_UPS,
   ACHIEVEMENTS,
+  CATEGORIES,
   AVATARS,
   DAILY_TASKS_TEMPLATE,
   THEMES,
@@ -55,7 +59,8 @@ export type QuizPhase =
   | "clan"
   | "submit_question"
   | "privacy_policy"
-  | "unsupported";
+  | "unsupported"
+  | "onboarding";
 
 export interface DuelData {
   questions: string[];
@@ -196,12 +201,12 @@ export interface QuizState {
   seasonPassClaimed: number[];
   activeEventId: string | null;
   miniGameMode: boolean;
-  miniGameStatements: { id: string; statement: string; isTrue: boolean; }[];
+  miniGameStatements: { id: string; statement: string; isTrue: boolean }[];
   miniGameIndex: number;
   miniGameScore: number;
   miniGameTimer: number;
   questionRatings: Record<string, boolean>;
-  friendList: { telegramId: number; name: string; avatarId: string; }[];
+  friendList: { telegramId: number; name: string; avatarId: string }[];
   clanId: string | null;
   clanName: string | null;
   notificationsEnabled: boolean;
@@ -247,6 +252,13 @@ export interface QuizState {
   tournamentData: TournamentEntry[];
   tournamentWeekKey: string | null;
 
+  dailyChainClaimedAt: string | null;
+  savedAt: number;
+  roundSummary: RoundSummary | null;
+  gameSettled: boolean;
+  duelShareLink: string | null;
+  processedReferrals: number[];
+  cloudError: string | null;
   // Actions
   setPhase: (phase: QuizPhase) => void;
   setPlayerName: (name: string) => void;
@@ -254,7 +266,12 @@ export interface QuizState {
   setUserPhoto: (url: string | null) => void;
   setAvatar: (avatarId: string) => void;
   setDifficulty: (d: 1 | 2 | 3) => void;
-  startGame: (categoryId: string | null, questions: Question[], aiMode?: boolean, gameMode?: "normal" | "survival") => void;
+  startGame: (
+    categoryId: string | null,
+    questions: Question[],
+    aiMode?: boolean,
+    gameMode?: "normal" | "survival",
+  ) => void;
   selectOption: (optionIndex: number) => void;
   revealAnswer: () => void;
   nextQuestion: () => void;
@@ -352,15 +369,15 @@ function generateDailyTasks(): DailyTaskProgress[] {
 }
 
 function getToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 // Helper: convert platform ID to numeric Supabase ID
 // VK IDs like "vk_12345" become negative: -12345
 // Telegram IDs like "721037003" stay positive
 function _toDbId(id: string): number {
-  if (id.startsWith('vk_')) {
-    const num = parseInt(id.replace('vk_', ''), 10);
+  if (id.startsWith("vk_")) {
+    const num = parseInt(id.replace("vk_", ""), 10);
     return -num; // Negative to avoid collision with TG IDs
   }
   return Number(id);
@@ -385,7 +402,7 @@ function getWeekKey(): string {
   const oneDay = 86400000;
   const dayOfYear = Math.floor(diff / oneDay);
   const weekNum = Math.ceil((dayOfYear + start.getDay() + 1) / 7);
-  return `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  return `${now.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 }
 
 function getBiweeklySeason(): number {
@@ -399,6 +416,13 @@ function getBiweeklySeason(): number {
 }
 
 const INITIAL_STATE = {
+  dailyChainClaimedAt: null as string | null,
+  savedAt: 0,
+  roundSummary: null as RoundSummary | null,
+  gameSettled: false,
+  duelShareLink: null as string | null,
+  processedReferrals: [] as number[],
+  cloudError: null as string | null,
   phase: "home" as QuizPhase,
   playerName: "",
   telegramId: null as string | null,
@@ -470,7 +494,7 @@ const INITIAL_STATE = {
   lastCloudSync: 0,
   leaderboard: [] as LeaderboardEntry[],
   // New features
-  currentTheme: "neon",
+  currentTheme: "light_theme",
   unlockedThemes: ["neon", "light_theme"] as string[],
   duelsWon: 0,
   duelsPlayed: 0,
@@ -480,7 +504,15 @@ const INITIAL_STATE = {
   gameMode: "normal" as "normal" | "survival",
   survivalRecord: 0,
   dailyChainDay: 0,
-  dailyChainCompleted: [false, false, false, false, false, false, false] as boolean[],
+  dailyChainCompleted: [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+  ] as boolean[],
   dailyChainDate: null as string | null,
   seasonScore: 0,
   seasonStart: null as string | null,
@@ -492,1282 +524,1267 @@ const INITIAL_STATE = {
 
 export const useQuizStore = create<QuizState>()(
   persist(
-    (set, get) => ({
-      ...INITIAL_STATE,
+    (rawSet, get) => {
+      // Navigation and sync flags must not make stale balances look newer.
+      const progressKeys = [
+        "coins",
+        "powerUps",
+        "totalScore",
+        "totalXP",
+        "gamesPlayed",
+        "seenQuestions",
+      ] as const;
+      const set: typeof rawSet = (patch: any, replace?: any) => {
+        const current = get();
+        const next = typeof patch === "function" ? patch(current) : patch;
+        const changed = progressKeys.some(
+          (key) => Object.hasOwn(next, key) && next[key] !== current[key],
+        );
+        rawSet(
+          {
+            ...next,
+            ...(changed && !Object.hasOwn(next, "savedAt")
+              ? { savedAt: Date.now() }
+              : {}),
+          },
+          replace,
+        );
+      };
+      return {
+        ...INITIAL_STATE,
 
-      setPhase: (phase) => set({ phase }),
+        setPhase: (phase) => set({ phase }),
 
-      setPlayerName: (name) => set({ playerName: name }),
-      setTelegramId: (id) => set({ telegramId: id }),
-      setUserPhoto: (url) => set({ userPhoto: url }),
-      setAvatar: (avatarId) => set({ avatarId }),
-      setDifficulty: (d) => set({ difficulty: d }),
+        setPlayerName: (name) => set({ playerName: name }),
+        setTelegramId: (id) => {
+          if (id === get().telegramId) return;
+          set({
+            ...INITIAL_STATE,
+            telegramId: id,
+            hasSeenTutorial: get().hasSeenTutorial,
+          });
+        },
+        setUserPhoto: (url) => set({ userPhoto: url }),
+        setAvatar: (avatarId) => {
+          if (get().unlockedAvatars.includes(avatarId)) set({ avatarId });
+        },
+        setDifficulty: (d) => set({ difficulty: d }),
 
-      // ===== CLOUD SYNC =====
+        // ===== CLOUD SYNC =====
 
+        syncFromCloud: async () => {
+          const state = get();
+          const tid = state.telegramId;
+          if (!tid || state.isCloudSyncing) return;
 
-
-      syncFromCloud: async () => {
-        const state = get();
-        const tid = state.telegramId;
-        if (!tid) return;
-
-        set({ isCloudSyncing: true });
-        try {
-          const dbId = _toDbId(tid);
-          const profile = await loadProfile(dbId);
-          if (profile) {
-            const localState = {
-              totalScore: state.totalScore,
-              totalXP: state.totalXP,
-              gamesPlayed: state.gamesPlayed,
-              totalCorrect: state.totalCorrect,
-              totalQuestions: state.totalQuestions,
-              bestStreak: state.bestStreak,
-              coins: state.coins,
-              level: state.level,
-              dailyStreak: state.dailyStreak,
-            };
-
-            // If cloud data is way ahead, just use cloud data entirely
-            const shouldForceCloud = profile.level > localState.level + 2;
-
-            const merged = shouldForceCloud ? {
-              playerName: profile.player_name || state.playerName,
-              avatarId: profile.avatar_id || state.avatarId,
-              totalScore: profile.total_score,
-              totalXP: profile.total_xp,
-              gamesPlayed: profile.games_played,
-              totalCorrect: profile.total_correct,
-              totalQuestions: profile.total_questions,
-              bestStreak: profile.best_streak,
-              coins: profile.coins,
-              level: profile.level,
-              currentLeague: profile.current_league || state.currentLeague,
-              dailyStreak: profile.daily_streak,
-              lastDailyAt: profile.last_daily_at || state.lastDailyAt,
-              unlockedAvatars: profile.unlocked_avatars?.length > 1 ? profile.unlocked_avatars : state.unlockedAvatars,
-              unlockedAchievements: profile.unlocked_achievements?.length > 0 ? profile.unlocked_achievements : state.unlockedAchievements,
-              powerUps: profile.power_ups || state.powerUps,
-              seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
-              categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
-              currentTheme: state.currentTheme,  // Always keep local theme choice
-              unlockedThemes: [...new Set([
-                ...(profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
-                'neon', 'light_theme'  // Default themes always available
-              ])],
-              duelsWon: (profile as any).duels_won || 0,
-              duelsPlayed: (profile as any).duels_played || 0,
-              survivalRecord: (profile as any).survival_record || 0,
-              seasonScore: (profile as any).season_score || 0,
-              categoryStats: (profile as any).category_stats || state.categoryStats,
-              gamesByDay: (profile as any).games_by_day || state.gamesByDay,
-              // V4.0 cloud fields
-              profileFrame: (profile as any).profile_frame || state.profileFrame,
-              referralCount: Math.max((profile as any).referral_count || 0, state.referralCount),
-              seasonPassTier: Math.max((profile as any).season_pass_tier || 0, state.seasonPassTier),
-              seasonPassClaimed: (profile as any).season_pass_claimed?.length > 0 ? (profile as any).season_pass_claimed : state.seasonPassClaimed,
-              questionRatings: (profile as any).question_ratings && Object.keys((profile as any).question_ratings).length > 0 ? (profile as any).question_ratings : state.questionRatings,
-              friendList: (profile as any).friend_list?.length > 0 ? (profile as any).friend_list : state.friendList,
-              clanId: (profile as any).clan_id || state.clanId,
-              clanName: (profile as any).clan_name || state.clanName,
-              notificationsEnabled: (profile as any).notifications_enabled !== undefined ? (profile as any).notifications_enabled : state.notificationsEnabled,
-              userPhoto: (profile as any).photo_url || state.userPhoto,
-              seasonStart: (profile as any).season_start || state.seasonStart,
-              dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
-              dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
-              dailyChainDate: (profile as any).daily_chain_date || state.dailyChainDate,
-            } : {
-              playerName: profile.player_name || state.playerName,
-              avatarId: profile.avatar_id || state.avatarId,
-              totalScore: Math.max(profile.total_score, localState.totalScore),
-              totalXP: Math.max(profile.total_xp, localState.totalXP),
-              gamesPlayed: Math.max(profile.games_played, localState.gamesPlayed),
-              totalCorrect: Math.max(profile.total_correct, localState.totalCorrect),
-              totalQuestions: Math.max(profile.total_questions, localState.totalQuestions),
-              bestStreak: Math.max(profile.best_streak, localState.bestStreak),
-              coins: Math.max(profile.coins, localState.coins),
-              level: Math.max(profile.level, localState.level),
-              currentLeague: profile.current_league || state.currentLeague,
-              dailyStreak: Math.max(profile.daily_streak, localState.dailyStreak),
-              lastDailyAt: profile.last_daily_at || state.lastDailyAt,
-              unlockedAvatars: profile.unlocked_avatars?.length > 1 ? profile.unlocked_avatars : state.unlockedAvatars,
-              unlockedAchievements: profile.unlocked_achievements?.length > 0 ? profile.unlocked_achievements : state.unlockedAchievements,
-              powerUps: profile.power_ups || state.powerUps,
-              seenQuestions: profile.seen_questions?.length > 0 ? profile.seen_questions : state.seenQuestions,
-              categoriesPlayed: profile.categories_played?.length > 0 ? profile.categories_played : state.categoriesPlayed,
-              // New fields from cloud
-              currentTheme: state.currentTheme,  // Always keep local theme choice
-              unlockedThemes: [...new Set([
-                ...(profile as any).unlocked_themes?.length > 0 ? (profile as any).unlocked_themes : state.unlockedThemes,
-                'neon', 'light_theme'  // Default themes always available
-              ])],
-              duelsWon: Math.max((profile as any).duels_won || 0, state.duelsWon),
-              duelsPlayed: Math.max((profile as any).duels_played || 0, state.duelsPlayed),
-              survivalRecord: Math.max((profile as any).survival_record || 0, state.survivalRecord),
-              seasonScore: Math.max((profile as any).season_score || 0, state.seasonScore),
-              categoryStats: (profile as any).category_stats || state.categoryStats,
-              gamesByDay: (profile as any).games_by_day || state.gamesByDay,
-              // V4.0 cloud fields (merge with local)
-              profileFrame: state.profileFrame !== 'none' ? state.profileFrame : ((profile as any).profile_frame || 'none'),
-              referralCount: Math.max((profile as any).referral_count || 0, state.referralCount),
-              seasonPassTier: Math.max((profile as any).season_pass_tier || 0, state.seasonPassTier),
-              seasonPassClaimed: (profile as any).season_pass_claimed?.length > 0
-                ? [...new Set([...state.seasonPassClaimed, ...(profile as any).season_pass_claimed])]
-                : state.seasonPassClaimed,
-              questionRatings: (profile as any).question_ratings && Object.keys((profile as any).question_ratings).length > 0
-                ? { ...(profile as any).question_ratings, ...state.questionRatings }
-                : state.questionRatings,
-              friendList: (profile as any).friend_list?.length > 0
-                ? (() => {
-                    const ids = new Set(state.friendList.map((f: any) => f.telegramId));
-                    return [...state.friendList, ...(profile as any).friend_list.filter((f: any) => !ids.has(f.telegramId))];
-                  })()
-                : state.friendList,
-              clanId: state.clanId || (profile as any).clan_id || null,
-              clanName: state.clanName || (profile as any).clan_name || null,
-              notificationsEnabled: state.notificationsEnabled || (profile as any).notifications_enabled || false,
-              userPhoto: state.userPhoto || (profile as any).photo_url || null,
-              seasonStart: state.seasonStart || (profile as any).season_start || null,
-              dailyChainDay: Math.max((profile as any).daily_chain_day || 0, state.dailyChainDay),
-              dailyChainCompleted: (profile as any).daily_chain_completed?.length > 0 ? (profile as any).daily_chain_completed : state.dailyChainCompleted,
-              dailyChainDate: (profile as any).daily_chain_date || state.dailyChainDate,
-            };
-
-            set({
-              ...merged,
-              isCloudLoaded: true,
-              isCloudSyncing: false,
-            });
-          } else {
-            set({ isCloudLoaded: true, isCloudSyncing: false });
-            await get().syncToCloud();
-          }
-        } catch (e) {
-          console.error('Failed to sync from cloud:', e);
-          set({ isCloudSyncing: false, isCloudLoaded: true });
-        }
-      },
-
-      syncToCloud: async () => {
-        const state = get();
-        const tid = state.telegramId;
-        if (!tid) return;
-
-        // Don't sync until cloud data is loaded to prevent overwriting cloud with stale local data
-        if (!state.isCloudLoaded) return;
-
-        const now = Date.now();
-        if (now - state.lastCloudSync < 2000) return;
-
-        set({ isCloudSyncing: true, lastCloudSync: now });
-        try {
-          const dbId = _toDbId(tid);
-          await saveProfile(dbId, {
-            player_name: state.playerName || 'Игрок',
-            avatar_id: state.avatarId,
-            total_score: state.totalScore,
-            total_xp: state.totalXP,
-            level: state.level,
-            coins: state.coins,
-            games_played: state.gamesPlayed,
-            total_correct: state.totalCorrect,
-            total_questions: state.totalQuestions,
-            best_streak: state.bestStreak,
-            current_league: state.currentLeague,
-            daily_streak: state.dailyStreak,
-            last_daily_at: state.lastDailyAt,
-            unlocked_avatars: state.unlockedAvatars,
-            unlocked_achievements: state.unlockedAchievements as any,
-            power_ups: state.powerUps,
-            seen_questions: state.seenQuestions,
-            categories_played: state.categoriesPlayed,
-            current_theme: state.currentTheme,
-            unlocked_themes: state.unlockedThemes,
-            duels_won: state.duelsWon,
-            duels_played: state.duelsPlayed,
-            survival_record: state.survivalRecord,
-            season_score: state.seasonScore,
-            category_stats: state.categoryStats as any,
-            games_by_day: state.gamesByDay as any,
-            // V4.0 fields
-            profile_frame: state.profileFrame,
-            referral_count: state.referralCount,
-            season_pass_tier: state.seasonPassTier,
-            season_pass_claimed: state.seasonPassClaimed,
-            question_ratings: state.questionRatings as any,
-            friend_list: state.friendList as any,
-            clan_id: state.clanId,
-            clan_name: state.clanName,
-            notifications_enabled: state.notificationsEnabled,
-            photo_url: state.userPhoto,
-            season_start: state.seasonStart,
-          } as any);
-
-          await updateLeaderboard(
-            dbId,
-            state.playerName || 'Игрок',
-            state.avatarId,
-            state.totalScore,
-            state.currentLeague,
-          );
-        } catch (e) {
-          console.error('Failed to sync to cloud:', e);
-        }
-        set({ isCloudSyncing: false });
-      },
-
-      fetchLeaderboard: async () => {
-        try {
-          const rows = await getCloudLeaderboard(50);
-          const entries: LeaderboardEntry[] = rows.map((row) => ({
-            name: row.player_name,
-            score: row.score,
-            avatarId: row.avatar_id,
-            league: row.league,
-            telegramId: row.telegram_id,
-          }));
-          set({ leaderboard: entries });
-        } catch (e) {
-          console.error('Failed to fetch leaderboard:', e);
-        }
-      },
-
-      // ===== GAME ACTIONS =====
-
-      startGame: (categoryId, questions, aiMode = false, gameMode = "normal") => {
-        set({
-          phase: "game",
-          categoryId,
-          questions,
-          currentQuestionIndex: 0,
-          answers: [],
-          timerRemaining: 15,
-          selectedOption: null,
-          isRevealed: false,
-          isTimerRunning: true,
-          currentStreak: 0,
-          isFiftyFiftyActive: false,
-          fiftyFiftyRemoved: [],
-          isHintActive: false,
-          freezeTimeRemaining: 0,
-          activePowerUp: null,
-          aiMode,
-          isGeneratingQuestions: false,
-          gameMode,
-          creatorReactions: [],
-        });
-      },
-
-      selectOption: (optionIndex) => {
-        const state = get();
-        if (state.isRevealed) return;
-        if (state.fiftyFiftyRemoved.includes(optionIndex)) return;
-        set({ selectedOption: optionIndex });
-      },
-
-      revealAnswer: () => {
-        const state = get();
-        const question = state.questions[state.currentQuestionIndex];
-        if (!question) return;
-
-        const isCorrect = state.selectedOption === question.correctIndex;
-        const timeSpent = state.timePerQuestion - state.timerRemaining;
-
-        const answer: AnswerRecord = {
-          questionId: question.id,
-          selectedOption: state.selectedOption ?? -1,
-          correctOption: question.correctIndex,
-          timeSpent,
-          isCorrect,
-        };
-
-        const newStreak = isCorrect ? state.currentStreak + 1 : 0;
-        const newBestStreak = Math.max(state.bestStreak, newStreak);
-        const newSeenQuestions = [...new Set([...state.seenQuestions, question.id])];
-
-        let xpGain = 0;
-        if (isCorrect) {
-          xpGain = 10 + (question.difficulty * 5);
-          if (timeSpent < 3) xpGain += 5;
-        }
-
-        // Update category stats
-        const cat = question.category;
-        const newCategoryStats = { ...state.categoryStats };
-        if (!newCategoryStats[cat]) newCategoryStats[cat] = { played: 0, correct: 0 };
-        newCategoryStats[cat] = {
-          played: newCategoryStats[cat].played + 1,
-          correct: newCategoryStats[cat].correct + (isCorrect ? 1 : 0),
-        };
-
-        set({
-          isRevealed: true,
-          isTimerRunning: false,
-          isFiftyFiftyActive: false,
-          fiftyFiftyRemoved: [],
-          isHintActive: false,
-          freezeTimeRemaining: 0,
-          activePowerUp: null,
-          answers: [...state.answers, answer],
-          currentStreak: newStreak,
-          bestStreak: newBestStreak,
-          totalXP: state.totalXP + xpGain,
-          level: calcLevel(state.totalXP + xpGain),
-          seenQuestions: newSeenQuestions,
-          categoryStats: newCategoryStats,
-        });
-
-        // In survival mode, wrong answer = immediate game over
-        if (state.gameMode === "survival" && !isCorrect) {
-          setTimeout(() => get().endGame(), 1000);
-        }
-      },
-
-      nextQuestion: () => {
-        const state = get();
-        const nextIndex = state.currentQuestionIndex + 1;
-
-        if (nextIndex >= state.questions.length) {
-          // In survival mode, we need more questions
-          if (state.gameMode === "survival") {
-            // Generate more questions for survival
-            const { getMixedQuestions } = require("./quiz-data");
-            const moreQs = getMixedQuestions(10, state.seenQuestions);
-            if (moreQs.length > 0) {
+          set({ isCloudSyncing: true, cloudError: null });
+          try {
+            const dbId = _toDbId(tid);
+            const profile = await loadProfile(dbId);
+            if (get().telegramId !== tid) return;
+            if (
+              get().phase === "game" ||
+              get().gamesPlayed !== state.gamesPlayed
+            ) {
+              set({ isCloudLoaded: true, isCloudSyncing: false });
+              return;
+            }
+            if (profile) {
+              const cloudAt = Date.parse(profile.updated_at) || 0;
+              const localIsNewer = state.savedAt > cloudAt;
+              const cloudProgress = {
+                playerName: profile.player_name || state.playerName,
+                avatarId: profile.avatar_id || "default",
+                totalScore: profile.total_score,
+                totalXP: profile.total_xp,
+                gamesPlayed: profile.games_played,
+                totalCorrect: profile.total_correct,
+                totalQuestions: profile.total_questions,
+                bestStreak: profile.best_streak,
+                coins: profile.coins,
+                level: profile.level,
+                currentLeague: profile.current_league || "bronze",
+                dailyStreak: profile.daily_streak,
+                lastDailyAt: profile.last_daily_at,
+                powerUps: profile.power_ups || state.powerUps,
+                seenQuestions: profile.seen_questions || [],
+                categoriesPlayed: profile.categories_played || [],
+                duelsWon: profile.duels_won || 0,
+                duelsPlayed: profile.duels_played || 0,
+                survivalRecord: profile.survival_record || 0,
+                seasonScore: profile.season_score || 0,
+                seasonStart: profile.season_start || null,
+                categoryStats: profile.category_stats || {},
+                gamesByDay: profile.games_by_day || {},
+                dailyChainDay: profile.daily_chain_day || 0,
+                dailyChainCompleted:
+                  profile.daily_chain_completed || state.dailyChainCompleted,
+                dailyChainDate: profile.daily_chain_date || null,
+                dailyChainClaimedAt: profile.daily_chain_claimed_at || null,
+                seasonPassClaimed: profile.season_pass_claimed || [],
+              };
               set({
-                questions: [...state.questions, ...moreQs],
-                currentQuestionIndex: nextIndex,
-                timerRemaining: 15,
-                selectedOption: null,
-                isRevealed: false,
-                isTimerRunning: true,
-                isFiftyFiftyActive: false,
-                fiftyFiftyRemoved: [],
-                isHintActive: false,
-                freezeTimeRemaining: 0,
-                activePowerUp: null,
+                ...(localIsNewer ? {} : cloudProgress),
+                unlockedAvatars: [
+                  ...new Set([
+                    ...state.unlockedAvatars,
+                    ...(profile.unlocked_avatars || []),
+                  ]),
+                ],
+                unlockedAchievements: [
+                  ...new Map(
+                    [
+                      ...state.unlockedAchievements,
+                      ...(profile.unlocked_achievements || []),
+                    ].map((a) => [a.id, a]),
+                  ).values(),
+                ],
+                unlockedThemes: [
+                  ...new Set([
+                    ...state.unlockedThemes,
+                    ...(profile.unlocked_themes || []),
+                    "neon",
+                    "light_theme",
+                  ]),
+                ],
+                currentTheme: state.currentTheme,
+                userPhoto: state.userPhoto || profile.photo_url || null,
+                savedAt: Math.max(state.savedAt, cloudAt),
+                isCloudLoaded: true,
+                isCloudSyncing: false,
               });
             } else {
-              get().endGame();
+              set({ isCloudLoaded: true, isCloudSyncing: false });
+              await get().syncToCloud();
             }
-          } else if (state.aiMode) {
-            // AI mode generates more
-            // The GameScreen will handle fetching
-          } else {
-            get().endGame();
+          } catch (e) {
+            console.error("Failed to sync from cloud:", e);
+            set({ cloudError: "Облако недоступно" });
+            set({ isCloudSyncing: false, isCloudLoaded: false });
           }
-        } else {
+        },
+
+        syncToCloud: async () => {
+          const state = get();
+          const tid = state.telegramId;
+          if (!tid || state.isCloudSyncing) return;
+
+          // Don't sync until cloud data is loaded to prevent overwriting cloud with stale local data
+          if (!state.isCloudLoaded) return;
+
+          const now = Date.now();
+          if (now - state.lastCloudSync < 2000) {
+            setTimeout(() => {
+              if (get().telegramId === tid) void get().syncToCloud();
+            }, 2100);
+            return;
+          }
+
+          set({ isCloudSyncing: true, lastCloudSync: now, cloudError: null });
+          try {
+            const dbId = _toDbId(tid);
+            const saved = await saveProfile(dbId, {
+              player_name: state.playerName || "Игрок",
+              avatar_id: state.avatarId,
+              total_score: state.totalScore,
+              total_xp: state.totalXP,
+              level: state.level,
+              coins: state.coins,
+              games_played: state.gamesPlayed,
+              total_correct: state.totalCorrect,
+              total_questions: state.totalQuestions,
+              best_streak: state.bestStreak,
+              current_league: state.currentLeague,
+              daily_streak: state.dailyStreak,
+              last_daily_at: state.lastDailyAt,
+              unlocked_avatars: state.unlockedAvatars,
+              unlocked_achievements: state.unlockedAchievements as any,
+              power_ups: state.powerUps,
+              seen_questions: state.seenQuestions,
+              categories_played: state.categoriesPlayed,
+              current_theme: state.currentTheme,
+              unlocked_themes: state.unlockedThemes,
+              duels_won: state.duelsWon,
+              duels_played: state.duelsPlayed,
+              survival_record: state.survivalRecord,
+              season_score: state.seasonScore,
+              category_stats: state.categoryStats as any,
+              games_by_day: state.gamesByDay as any,
+              // V4.0 fields
+              profile_frame: state.profileFrame,
+              referral_count: state.referralCount,
+              season_pass_tier: state.seasonPassTier,
+              season_pass_claimed: state.seasonPassClaimed,
+              question_ratings: state.questionRatings as any,
+              friend_list: state.friendList as any,
+              clan_id: state.clanId,
+              clan_name: state.clanName,
+              notifications_enabled: state.notificationsEnabled,
+              photo_url: state.userPhoto,
+              season_start: state.seasonStart,
+              daily_chain_day: state.dailyChainDay,
+              daily_chain_completed: state.dailyChainCompleted,
+              daily_chain_date: state.dailyChainDate,
+              daily_chain_claimed_at: state.dailyChainClaimedAt,
+            } as any);
+
+            if (!saved) throw new Error("Не удалось сохранить профиль");
+            const ranked = await updateLeaderboard(
+              dbId,
+              state.playerName || "Игрок",
+              state.avatarId,
+              state.totalScore,
+              state.currentLeague,
+            );
+            if (!ranked) throw new Error("Не удалось обновить рейтинг");
+          } catch (e) {
+            console.error("Failed to sync to cloud:", e);
+            set({ cloudError: "Облако недоступно" });
+          }
+          set({ isCloudSyncing: false });
+          const latest = get();
+          if (
+            latest.telegramId === tid &&
+            !latest.cloudError &&
+            (latest.coins !== state.coins ||
+              latest.totalScore !== state.totalScore ||
+              latest.avatarId !== state.avatarId ||
+              latest.currentTheme !== state.currentTheme)
+          ) {
+            setTimeout(() => {
+              void get().syncToCloud();
+            }, 2100);
+          }
+        },
+
+        fetchLeaderboard: async () => {
+          try {
+            const rows = await getCloudLeaderboard(50);
+            const entries: LeaderboardEntry[] = rows.map((row) => ({
+              name: row.player_name,
+              score: row.score,
+              avatarId: row.avatar_id,
+              league: row.league,
+              telegramId: row.telegram_id,
+            }));
+            set({ leaderboard: entries });
+          } catch (e) {
+            console.error("Failed to fetch leaderboard:", e);
+          }
+        },
+
+        // ===== GAME ACTIONS =====
+
+        startGame: (
+          categoryId,
+          questions,
+          aiMode = false,
+          gameMode = "normal",
+        ) => {
+          if (!questions.length) return;
+          if (get().pendingChest) get().openChest();
           set({
-            currentQuestionIndex: nextIndex,
-            timerRemaining: 15,
+            phase: "game",
+            categoryId,
+            questions,
+            currentQuestionIndex: 0,
+            answers: [],
+            timerRemaining: get().timePerQuestion,
             selectedOption: null,
             isRevealed: false,
             isTimerRunning: true,
+            currentStreak: 0,
+            comboStreak: 0,
+            comboMultiplier: 1,
             isFiftyFiftyActive: false,
             fiftyFiftyRemoved: [],
             isHintActive: false,
             freezeTimeRemaining: 0,
             activePowerUp: null,
+            aiMode,
+            isGeneratingQuestions: false,
+            gameMode,
+            creatorReactions: [],
+            continueUsed: false,
+            duelMode: false,
+            duelData: null,
+            duelResult: null,
+            duelShareLink: null,
+            roundSummary: null,
+            gameSettled: false,
           });
-        }
-      },
+        },
 
-      tick: () => {
-        const state = get();
-        if (!state.isTimerRunning) return;
-
-        if (state.freezeTimeRemaining > 0) {
-          set({ freezeTimeRemaining: state.freezeTimeRemaining - 1 });
-          return;
-        }
-
-        if (state.timerRemaining <= 0) {
-          const question = state.questions[state.currentQuestionIndex];
-          if (question && !state.isRevealed) {
-            const answer: AnswerRecord = {
-              questionId: question.id,
-              selectedOption: state.selectedOption ?? -1,
-              correctOption: question.correctIndex,
-              timeSpent: state.timePerQuestion,
-              isCorrect: false,
-            };
-            set({
-              isRevealed: true,
-              isTimerRunning: false,
-              answers: [...state.answers, answer],
-              currentStreak: 0,
-            });
-            // In survival mode, timeout = game over
-            if (state.gameMode === "survival") {
-              setTimeout(() => get().endGame(), 1000);
-            }
-          }
-          return;
-        }
-        set({ timerRemaining: state.timerRemaining - 1 });
-      },
-
-      endGame: () => {
-        const state = get();
-
-        if (state.duelMode) {
-          set({ phase: "result" });
-          return;
-        }
-
-        const correctCount = state.answers.filter((a) => a.isCorrect).length;
-        const totalQuestions = state.questions.length;
-        const avgTime =
-          state.answers.reduce((sum, a) => sum + a.timeSpent, 0) /
-          (state.answers.length || 1);
-
-        let roundScore = correctCount * 10;
-        if (avgTime < 5) roundScore += 5;
-        if (state.bestStreak >= 5) roundScore += 10;
-        if (state.bestStreak >= 10) roundScore += 20;
-        if (correctCount === totalQuestions && totalQuestions > 0) roundScore += 25;
-
-        // Survival mode multiplier
-        if (state.gameMode === "survival") {
-          const multiplier = 1 + Math.floor(correctCount / 5) * 0.5;
-          roundScore = Math.round(roundScore * Math.min(multiplier, 3));
-
-          // Survival milestones
-          for (const milestone of SURVIVAL_MILESTONES) {
-            if (correctCount >= milestone.correct) {
-              roundScore += milestone.coins;
-            }
-          }
-        }
-
-        let coinsEarned = Math.ceil(roundScore / 2);
-
-        const newTotalScore = state.totalScore + roundScore;
-        const newLeague = getLeagueByScore(newTotalScore);
-        const newCategoriesPlayed = state.categoryId
-          ? [...new Set([...state.categoriesPlayed, state.categoryId])]
-          : state.categoriesPlayed;
-
-        const today = getToday();
-        let newDailyStreak = state.dailyStreak;
-        if (state.lastDailyAt !== today) {
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          newDailyStreak = state.lastDailyAt === yesterdayStr
-            ? state.dailyStreak + 1
-            : 1;
-        }
-
-        // Track games played today
-        const newGamesPlayedTodayDate = today;
-        const newGamesPlayedToday = state.gamesPlayedTodayDate === today
-          ? state.gamesPlayedToday + 1
-          : 1;
-
-        // Track games by day
-        const newGamesByDay = { ...state.gamesByDay };
-        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
-
-        // Survival record
-        const newSurvivalRecord = state.gameMode === "survival"
-          ? Math.max(state.survivalRecord, correctCount)
-          : state.survivalRecord;
-
-        // Season score
-        const newSeasonScore = state.seasonScore + roundScore;
-
-        // Determine chest
-        let pendingChest: ChestReward | null = null;
-
-        // Common chest after every game
-        const commonChest = CHEST_TYPES[0];
-        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
-        let chestAvatarId: string | undefined;
-        if (Math.random() < commonChest.avatarChance) {
-          const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
-          if (commonAvatars.length > 0) {
-            chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
-          }
-        }
-        pendingChest = { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } };
-
-        // Silver chest for 5 games in a day
-        if (newGamesPlayedToday >= 5 && newGamesPlayedToday % 5 === 0) {
-          const silverChest = CHEST_TYPES[1];
-          const silverCoins = randomInt(silverChest.coinRange[0], silverChest.coinRange[1]);
-          let silverAvatarId: string | undefined;
-          if (Math.random() < silverChest.avatarChance) {
-            const rareAvatars = AVATARS.filter(a => a.rarity === "rare" && !state.unlockedAvatars.includes(a.id));
-            if (rareAvatars.length > 0) {
-              silverAvatarId = rareAvatars[Math.floor(Math.random() * rareAvatars.length)].id;
-            }
-          }
-          // Replace with silver chest (better)
-          pendingChest = { type: "silver", rewards: { coins: silverCoins, avatarId: silverAvatarId } };
-        }
-
-        // Gold chest for duel win will be handled in finishDuelChallenger
-
-        set({
-          totalScore: newTotalScore,
-          gamesPlayed: state.gamesPlayed + 1,
-          totalCorrect: state.totalCorrect + correctCount,
-          totalQuestions: state.totalQuestions + totalQuestions,
-          coins: state.coins + coinsEarned,
-          currentLeague: newLeague.id,
-          categoriesPlayed: newCategoriesPlayed,
-          dailyStreak: newDailyStreak,
-          lastDailyAt: today,
-          gamesPlayedToday: newGamesPlayedToday,
-          gamesPlayedTodayDate: newGamesPlayedTodayDate,
-          gamesByDay: newGamesByDay,
-          survivalRecord: newSurvivalRecord,
-          seasonScore: newSeasonScore,
-          pendingChest,
-          phase: "chest",
-        });
-
-        get().updateDailyProgress("games", 1);
-        get().updateDailyProgress("correct", correctCount);
-        if (state.bestStreak >= 3) get().updateDailyProgress("streak", 1);
-        if (state.categoryId) get().updateDailyProgress("category", 1);
-
-        get().checkAchievements();
-        get().checkThemeUnlocks();
-        get().checkDailyChain();
-        get().checkSeason();
-        get().syncToCloud();
-      },
-
-      playAgain: () => {
-        set({
-          phase: "category",
-          questions: [],
-          currentQuestionIndex: 0,
-          answers: [],
-          timerRemaining: 15,
-          selectedOption: null,
-          isRevealed: false,
-          isTimerRunning: false,
-          currentStreak: 0,
-          categoryId: null,
-          isFiftyFiftyActive: false,
-          fiftyFiftyRemoved: [],
-          isHintActive: false,
-          freezeTimeRemaining: 0,
-          activePowerUp: null,
-          aiMode: false,
-          isGeneratingQuestions: false,
-          duelMode: false,
-          duelData: null,
-          duelResult: null,
-          gameMode: "normal",
-          creatorReactions: [],
-        });
-      },
-
-      setAiMode: (enabled) => set({ aiMode: enabled }),
-      setIsGeneratingQuestions: (generating) => set({ isGeneratingQuestions: generating }),
-
-      addQuestions: (newQuestions) => {
-        const state = get();
-        set({
-          questions: [...state.questions, ...newQuestions],
-          isGeneratingQuestions: false,
-        });
-      },
-
-      usePowerUp: (id) => {
-        const state = get();
-        if (state.isRevealed) return;
-
-        const pu = state.powerUps as PowerUpState;
-        const key = id as keyof PowerUpState;
-        if ((pu[key] || 0) <= 0) return;
-
-        const newState: Partial<QuizState> = {
-          powerUps: { ...pu, [key]: (pu[key] || 0) - 1 },
-          activePowerUp: id,
-        };
-
-        if (id === "freeze") {
-          newState.freezeTimeRemaining = 10;
-        } else if (id === "fiftyFifty") {
-          const question = state.questions[state.currentQuestionIndex];
-          if (!question) return;
-          const wrongOptions = question.options
-            .map((_, i) => i)
-            .filter((i) => i !== question.correctIndex);
-          const shuffled = wrongOptions.sort(() => Math.random() - 0.5);
-          const removed = shuffled.slice(0, 2);
-          newState.isFiftyFiftyActive = true;
-          newState.fiftyFiftyRemoved = removed;
+        selectOption: (optionIndex) => {
+          const state = get();
           if (
-            state.selectedOption !== null &&
-            removed.includes(state.selectedOption)
-          ) {
-            newState.selectedOption = null;
+            state.phase !== "game" ||
+            state.isRevealed ||
+            state.selectedOption !== null ||
+            !state.isTimerRunning
+          )
+            return;
+          const question = state.questions[state.currentQuestionIndex];
+          if (
+            !question ||
+            !Number.isInteger(optionIndex) ||
+            optionIndex < 0 ||
+            optionIndex >= question.options.length ||
+            state.fiftyFiftyRemoved.includes(optionIndex)
+          )
+            return;
+          set({ selectedOption: optionIndex, isTimerRunning: false });
+        },
+
+        revealAnswer: () => {
+          const state = get();
+          const question = state.questions[state.currentQuestionIndex];
+          if (!question || state.isRevealed || state.phase !== "game") return;
+
+          const isCorrect = state.selectedOption === question.correctIndex;
+          const timeSpent = Math.max(
+            0,
+            state.timePerQuestion - state.timerRemaining,
+          );
+
+          const answer: AnswerRecord = {
+            questionId: question.id,
+            selectedOption: state.selectedOption ?? -1,
+            correctOption: question.correctIndex,
+            timeSpent,
+            isCorrect,
+          };
+
+          const newStreak = isCorrect ? state.currentStreak + 1 : 0;
+          const newBestStreak = Math.max(state.bestStreak, newStreak);
+          const newSeenQuestions = [
+            ...new Set([...state.seenQuestions, question.id]),
+          ];
+
+          let xpGain = 0;
+          if (isCorrect) {
+            xpGain = 10 + question.difficulty * 5;
+            if (timeSpent < 3) xpGain += 5;
           }
-        } else if (id === "hint") {
-          newState.isHintActive = true;
-        }
 
-        set(newState as any);
-      },
+          // Update category stats
+          const cat = question.category;
+          const newCategoryStats = { ...state.categoryStats };
+          if (!newCategoryStats[cat])
+            newCategoryStats[cat] = { played: 0, correct: 0 };
+          newCategoryStats[cat] = {
+            played: newCategoryStats[cat].played + 1,
+            correct: newCategoryStats[cat].correct + (isCorrect ? 1 : 0),
+          };
 
-      buyPowerUp: (id) => {
-        const state = get();
-        const pu = POWER_UPS.find((p) => p.id === id);
-        if (!pu) return false;
-        if (state.coins < pu.price) return false;
-        const key = id as keyof PowerUpState;
-        set({
-          coins: state.coins - pu.price,
-          powerUps: {
-            ...state.powerUps,
-            [key]: (state.powerUps[key] || 0) + 1,
-          },
-        });
-        get().syncToCloud();
-        return true;
-      },
+          set({
+            isRevealed: true,
+            isTimerRunning: false,
+            isFiftyFiftyActive: false,
+            fiftyFiftyRemoved: [],
+            isHintActive: false,
+            freezeTimeRemaining: 0,
+            activePowerUp: null,
+            answers: [...state.answers, answer],
+            currentStreak: newStreak,
+            comboStreak: newStreak,
+            comboMultiplier: getActiveCombo(newStreak)?.multiplier || 1,
+            bestStreak: newBestStreak,
+            totalXP: state.totalXP + xpGain,
+            level: calcLevel(state.totalXP + xpGain),
+            seenQuestions: newSeenQuestions,
+            categoryStats: newCategoryStats,
+          });
+        },
 
-      buyAvatar: (id) => {
-        const state = get();
-        const avatar = AVATARS.find((a) => a.id === id);
-        if (!avatar) return false;
-        if (state.unlockedAvatars.includes(id)) return false;
-        if (state.coins < avatar.price) return false;
-        set({
-          coins: state.coins - avatar.price,
-          unlockedAvatars: [...state.unlockedAvatars, id],
-          avatarId: id,
-        });
-        get().syncToCloud();
-        return true;
-      },
+        nextQuestion: () => {
+          const state = get();
+          if (state.phase !== "game" || !state.isRevealed || state.gameSettled)
+            return;
+          const nextIndex = state.currentQuestionIndex + 1;
 
-      checkDailyReset: () => {
-        const state = get();
-        const today = getToday();
-
-        // Reset games played today if new day
-        if (state.gamesPlayedTodayDate && state.gamesPlayedTodayDate !== today) {
-          set({ gamesPlayedToday: 0, gamesPlayedTodayDate: today });
-        }
-
-        // Check daily chain (reset if missed a day)
-        if (state.dailyChainDate) {
-          const lastDate = new Date(state.dailyChainDate);
-          const todayDate = new Date(today);
-          const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / 86400000);
-          if (diffDays > 1) {
+          if (nextIndex >= state.questions.length) {
+            // In survival mode, we need more questions
+            if (state.gameMode === "survival") {
+              // Generate more questions for survival
+              const difficulty = Math.min(
+                3,
+                1 +
+                  Math.floor(
+                    state.answers.filter((a) => a.isCorrect).length / 10,
+                  ),
+              );
+              const moreQs = getQuestionsByDifficulty(
+                null,
+                difficulty,
+                10,
+                state.seenQuestions,
+              );
+              if (moreQs.length > 0) {
+                set({
+                  questions: [...state.questions, ...moreQs],
+                  currentQuestionIndex: nextIndex,
+                  timerRemaining: get().timePerQuestion,
+                  selectedOption: null,
+                  isRevealed: false,
+                  isTimerRunning: true,
+                  isFiftyFiftyActive: false,
+                  fiftyFiftyRemoved: [],
+                  isHintActive: false,
+                  freezeTimeRemaining: 0,
+                  activePowerUp: null,
+                });
+              } else {
+                get().endGame();
+              }
+            } else if (state.aiMode) {
+              // AI mode generates more
+              // The GameScreen will handle fetching
+            } else {
+              get().endGame();
+            }
+          } else {
             set({
-              dailyChainDay: 0,
-              dailyChainCompleted: [false, false, false, false, false, false, false],
-              dailyChainDate: today,
+              currentQuestionIndex: nextIndex,
+              timerRemaining: get().timePerQuestion,
+              selectedOption: null,
+              isRevealed: false,
+              isTimerRunning: true,
+              isFiftyFiftyActive: false,
+              fiftyFiftyRemoved: [],
+              isHintActive: false,
+              freezeTimeRemaining: 0,
+              activePowerUp: null,
             });
           }
-        }
-        if (!state.dailyChainDate || state.dailyChainDate !== today) {
-          set({ dailyChainDate: today });
-        }
+        },
 
-        // Refresh daily tasks if new day
-        if (state.dailyTasksDate !== today) {
-          set({
-            dailyTasks: generateDailyTasks(),
-            dailyTasksDate: today,
-          });
-        }
-
-        // Reset daily streak if last play was more than 1 day ago
-        if (state.lastDailyAt && state.lastDailyAt !== today) {
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          if (state.lastDailyAt !== yesterdayStr) {
-            set({ dailyStreak: 0 });
-          }
-        }
-      },
-
-      refreshDailyTasks: () => {
-        const state = get();
-        const today = getToday();
-        if (state.dailyTasksDate !== today) {
-          set({
-            dailyTasks: generateDailyTasks(),
-            dailyTasksDate: today,
-          });
-        }
-      },
-
-      updateDailyProgress: (type, amount) => {
-        const state = get();
-        const updated = state.dailyTasks.map((t) =>
-          t.type === type && !t.claimed
-            ? { ...t, progress: Math.min(t.progress + amount, t.target) }
-            : t
-        );
-        set({ dailyTasks: updated });
-      },
-
-      claimDailyReward: (taskId) => {
-        const state = get();
-        const task = state.dailyTasks.find((t) => t.id === taskId);
-        if (!task || task.progress < task.target || task.claimed) return;
-        const updated = state.dailyTasks.map((t) =>
-          t.id === taskId ? { ...t, claimed: true } : t
-        );
-        set({
-          dailyTasks: updated,
-          coins: state.coins + task.reward,
-        });
-        get().syncToCloud();
-      },
-
-      checkAchievements: () => {
-        const state = get();
-        const unlocked = new Set(state.unlockedAchievements.map((a) => a.id));
-        const newAchs: UnlockedAchievement[] = [];
-        const now = Date.now();
-
-        for (const ach of ACHIEVEMENTS) {
-          if (unlocked.has(ach.id)) continue;
-          let earned = false;
-
-          switch (ach.id) {
-            case "first_game": earned = state.gamesPlayed >= 1; break;
-            case "ten_games": earned = state.gamesPlayed >= 10; break;
-            case "fifty_games": earned = state.gamesPlayed >= 50; break;
-            case "streak_3": earned = state.bestStreak >= 3; break;
-            case "streak_5": earned = state.bestStreak >= 5; break;
-            case "streak_10": earned = state.bestStreak >= 10; break;
-            case "perfect": {
-              const lastGame = state.answers.slice(-state.questions.length);
-              earned = lastGame.length > 0 && lastGame.every((a) => a.isCorrect);
-              break;
-            }
-            case "speed_demon": {
-              earned = state.answers.some((a) => a.isCorrect && a.timeSpent <= 3);
-              break;
-            }
-            case "league_silver": earned = state.totalScore >= 50; break;
-            case "league_gold": earned = state.totalScore >= 150; break;
-            case "league_platinum": earned = state.totalScore >= 350; break;
-            case "league_diamond": earned = state.totalScore >= 700; break;
-            case "daily_3": earned = state.dailyStreak >= 3; break;
-            case "daily_7": earned = state.dailyStreak >= 7; break;
-            case "daily_30": earned = state.dailyStreak >= 30; break;
-            case "category_all": earned = state.categoriesPlayed.length >= 10; break;
-            case "coins_100": earned = state.coins >= 100; break;
-            case "level_5": earned = state.level >= 5; break;
-            case "level_10": earned = state.level >= 10; break;
-            case "hundred_correct": earned = state.totalCorrect >= 100; break;
-            case "survival_10": earned = state.survivalRecord >= 10; break;
-            case "survival_20": earned = state.survivalRecord >= 20; break;
-            case "survival_50": earned = state.survivalRecord >= 50; break;
-            case "duel_winner_10": earned = state.duelsWon >= 10; break;
-            case "hundred_games": earned = state.gamesPlayed >= 100; break;
-            case "streak_15": earned = state.bestStreak >= 15; break;
-            case "streak_20": earned = state.bestStreak >= 20; break;
-            case "coins_500": earned = state.coins >= 500; break;
-            case "coins_1000": earned = state.coins >= 1000; break;
-            case "level_15": earned = state.level >= 15; break;
-            case "level_25": earned = state.level >= 25; break;
-            case "five_hundred_correct": earned = state.totalCorrect >= 500; break;
-            case "thousand_correct": earned = state.totalCorrect >= 1000; break;
-            case "duel_first": earned = (state as any).duelsPlayed >= 1; break;
-            case "duel_master": earned = (state as any).duelsWon >= 25; break;
-            case "theme_collector": earned = (state as any).unlockedThemes?.length >= 4; break;
-          }
-
-          if (earned) {
-            newAchs.push({ id: ach.id, unlockedAt: now });
-          }
-        }
-
-        if (newAchs.length > 0) {
-          const totalReward = newAchs.reduce((sum, a) => {
-            const achData = ACHIEVEMENTS.find((ad) => ad.id === a.id);
-            return sum + (achData?.reward || 0);
-          }, 0);
-
-          set({
-            unlockedAchievements: [...state.unlockedAchievements, ...newAchs],
-            newAchievements: [
-              ...state.newAchievements,
-              ...newAchs.map((a) => a.id),
-            ],
-            coins: state.coins + totalReward,
-          });
-        }
-      },
-
-      startDuel: (questions) => {
-        set({
-          phase: 'game',
-          duelMode: true,
-          categoryId: null,
-          questions,
-          currentQuestionIndex: 0,
-          answers: [],
-          timerRemaining: 15,
-          selectedOption: null,
-          isRevealed: false,
-          isTimerRunning: true,
-          currentStreak: 0,
-          isFiftyFiftyActive: false,
-          fiftyFiftyRemoved: [],
-          isHintActive: false,
-          freezeTimeRemaining: 0,
-          activePowerUp: null,
-          gameMode: "normal",
-          creatorReactions: [],
-        });
-      },
-
-      joinDuel: (duelData, questions) => {
-        set({
-          phase: 'game',
-          duelMode: true,
-          duelData,
-          categoryId: null,
-          questions,
-          currentQuestionIndex: 0,
-          answers: [],
-          timerRemaining: 15,
-          selectedOption: null,
-          isRevealed: false,
-          isTimerRunning: true,
-          currentStreak: 0,
-          isFiftyFiftyActive: false,
-          fiftyFiftyRemoved: [],
-          isHintActive: false,
-          freezeTimeRemaining: 0,
-          activePowerUp: null,
-          gameMode: "normal",
-          creatorReactions: [],
-        });
-      },
-
-      addCreatorReaction: (emoji) => {
-        const state = get();
-        set({ creatorReactions: [...state.creatorReactions, emoji] });
-      },
-
-      finishDuelCreator: () => {
-        const state = get();
-        const correctCount = state.answers.filter((a) => a.isCorrect).length;
-        const questionIds = state.questions.map((q) => q.id);
-        const creatorName = state.playerName || 'Игрок';
-
-        const duelData: DuelData = {
-          questions: questionIds,
-          creatorScore: correctCount,
-          creatorName,
-          creatorReactions: state.creatorReactions,
-        };
-
-        const encoded = btoa(encodeURIComponent(JSON.stringify(duelData)));
-        const shareLink = `https://kvizlik-public.vercel.app/?duel=${encoded}`;
-
-        const roundScore = correctCount * 10;
-        const coinsEarned = Math.ceil(roundScore / 2);
-        const newTotalScore = state.totalScore + roundScore;
-        const newLeague = getLeagueByScore(newTotalScore);
-        const today = getToday();
-        let newDailyStreak = state.dailyStreak;
-        if (state.lastDailyAt !== today) {
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          newDailyStreak = state.lastDailyAt === yesterdayStr
-            ? state.dailyStreak + 1
-            : 1;
-        }
-
-        // Determine chest for duel creator
-        const commonChest = CHEST_TYPES[0];
-        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
-        let chestAvatarId: string | undefined;
-        if (Math.random() < commonChest.avatarChance) {
-          const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
-          if (commonAvatars.length > 0) {
-            chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
-          }
-        }
-
-        const newGamesByDay = { ...state.gamesByDay };
-        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
-
-        set({
-          duelMode: true,
-          duelData,
-          totalScore: newTotalScore,
-          gamesPlayed: state.gamesPlayed + 1,
-          totalCorrect: state.totalCorrect + correctCount,
-          totalQuestions: state.totalQuestions + state.questions.length,
-          coins: state.coins + coinsEarned,
-          currentLeague: newLeague.id,
-          dailyStreak: newDailyStreak,
-          lastDailyAt: today,
-          duelsPlayed: state.duelsPlayed + 1,
-          gamesByDay: newGamesByDay,
-          pendingChest: { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } },
-          phase: 'result',
-        });
-
-        get().updateDailyProgress('games', 1);
-        get().updateDailyProgress('correct', correctCount);
-        get().updateDailyProgress('duel', 1);
-        get().checkAchievements();
-        get().checkThemeUnlocks();
-        get().syncToCloud();
-
-        return shareLink;
-      },
-
-      finishDuelChallenger: () => {
-        const state = get();
-        const correctCount = state.answers.filter((a) => a.isCorrect).length;
-        const opponentScore = state.duelData?.creatorScore ?? 0;
-        const opponentName = state.duelData?.creatorName ?? 'Соперник';
-        const won = correctCount > opponentScore;
-
-        const roundScore = correctCount * 10;
-        const bonusCoins = won ? 20 : 0;
-        const coinsEarned = Math.ceil(roundScore / 2) + bonusCoins;
-        const newTotalScore = state.totalScore + roundScore;
-        const newLeague = getLeagueByScore(newTotalScore);
-        const today = getToday();
-        let newDailyStreak = state.dailyStreak;
-        if (state.lastDailyAt !== today) {
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          newDailyStreak = state.lastDailyAt === yesterdayStr
-            ? state.dailyStreak + 1
-            : 1;
-        }
-
-        // Track duels won
-        const newDuelsWon = won ? state.duelsWon + 1 : state.duelsWon;
-        const newDuelsPlayed = state.duelsPlayed + 1;
-
-        // Gold chest for duel win
-        let pendingChest: ChestReward | null = null;
-        const commonChest = CHEST_TYPES[0];
-        const chestCoins = randomInt(commonChest.coinRange[0], commonChest.coinRange[1]);
-        let chestAvatarId: string | undefined;
-
-        if (won) {
-          const goldChest = CHEST_TYPES[2];
-          const goldCoins = randomInt(goldChest.coinRange[0], goldChest.coinRange[1]);
-          if (Math.random() < goldChest.avatarChance) {
-            const epicAvatars = AVATARS.filter(a => a.rarity === "epic" && !state.unlockedAvatars.includes(a.id));
-            if (epicAvatars.length > 0) {
-              chestAvatarId = epicAvatars[Math.floor(Math.random() * epicAvatars.length)].id;
-            }
-          }
-          pendingChest = { type: "gold", rewards: { coins: goldCoins, avatarId: chestAvatarId } };
-        } else {
-          if (Math.random() < commonChest.avatarChance) {
-            const commonAvatars = AVATARS.filter(a => a.rarity === "common" && !state.unlockedAvatars.includes(a.id));
-            if (commonAvatars.length > 0) {
-              chestAvatarId = commonAvatars[Math.floor(Math.random() * commonAvatars.length)].id;
-            }
-          }
-          pendingChest = { type: "common", rewards: { coins: chestCoins, avatarId: chestAvatarId } };
-        }
-
-        const newGamesByDay = { ...state.gamesByDay };
-        newGamesByDay[today] = (newGamesByDay[today] || 0) + 1;
-
-        set({
-          duelResult: {
-            myScore: correctCount,
-            opponentScore,
-            opponentName,
-            won,
-          },
-          totalScore: newTotalScore,
-          gamesPlayed: state.gamesPlayed + 1,
-          totalCorrect: state.totalCorrect + correctCount,
-          totalQuestions: state.totalQuestions + state.questions.length,
-          coins: state.coins + coinsEarned,
-          currentLeague: newLeague.id,
-          dailyStreak: newDailyStreak,
-          lastDailyAt: today,
-          duelsWon: newDuelsWon,
-          duelsPlayed: newDuelsPlayed,
-          gamesByDay: newGamesByDay,
-          pendingChest,
-          phase: 'duel_result',
-        });
-
-        get().updateDailyProgress('games', 1);
-        get().updateDailyProgress('correct', correctCount);
-        get().updateDailyProgress('duel', 1);
-        if (won) get().updateDailyProgress('duel', 1); // extra for win task
-        get().checkAchievements();
-        get().checkThemeUnlocks();
-        get().syncToCloud();
-      },
-
-      // ===== THEME ACTIONS =====
-
-      setTheme: (themeId) => {
-        const state = get();
-        if (!state.unlockedThemes.includes(themeId)) return;
-        set({ currentTheme: themeId });
-        get().syncToCloud();
-      },
-
-      unlockTheme: (themeId) => {
-        const state = get();
-        if (state.unlockedThemes.includes(themeId)) return;
-        set({ unlockedThemes: [...state.unlockedThemes, themeId] });
-        get().syncToCloud();
-      },
-
-      checkThemeUnlocks: () => {
-        const state = get();
-        for (const theme of THEMES) {
-          if (state.unlockedThemes.includes(theme.id)) continue;
-          let shouldUnlock = false;
-          switch (theme.unlockCondition) {
-            case "default": shouldUnlock = true; break;
-            case "level": shouldUnlock = state.level >= theme.unlockValue; break;
-            case "coins": shouldUnlock = state.coins >= theme.unlockValue; break;
-            case "duels": shouldUnlock = state.duelsWon >= theme.unlockValue; break;
-            case "streak": shouldUnlock = state.dailyStreak >= theme.unlockValue; break;
-          }
-          if (shouldUnlock) {
-            get().unlockTheme(theme.id);
-          }
-        }
-      },
-
-      // ===== CHEST ACTIONS =====
-
-      openChest: () => {
-        const state = get();
-        if (!state.pendingChest) return;
-
-        const chest = state.pendingChest;
-        let newUnlockedAvatars = [...state.unlockedAvatars];
-        if (chest.rewards.avatarId && !newUnlockedAvatars.includes(chest.rewards.avatarId)) {
-          newUnlockedAvatars.push(chest.rewards.avatarId);
-        }
-
-        set({
-          coins: state.coins + chest.rewards.coins,
-          unlockedAvatars: newUnlockedAvatars,
-          pendingChest: null,
-          phase: "result",
-        });
-
-        get().syncToCloud();
-      },
-
-      // ===== DAILY CHAIN =====
-
-      checkDailyChain: () => {
-        const state = get();
-        const today = getToday();
-
-        // Reset if missed a day
-        if (state.dailyChainDate) {
-          const lastDate = new Date(state.dailyChainDate);
-          const todayDate = new Date(today);
-          const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / 86400000);
-          if (diffDays > 1) {
-            // Missed a day, reset chain
-            set({
-              dailyChainDay: 0,
-              dailyChainCompleted: [false, false, false, false, false, false, false],
-              dailyChainDate: today,
-            });
+        tick: () => {
+          const state = get();
+          if (
+            state.phase !== "game" ||
+            !state.isTimerRunning ||
+            state.isRevealed
+          )
+            return;
+          if (state.freezeTimeRemaining > 0) {
+            set({ freezeTimeRemaining: state.freezeTimeRemaining - 1 });
             return;
           }
-        }
-
-        if (state.dailyChainDate !== today) {
-          set({ dailyChainDate: today });
-        }
-      },
-
-      claimDailyChain: (day: number) => {
-        const state = get();
-        if (day !== state.dailyChainDay) return;
-        if (state.dailyChainCompleted[day]) return;
-
-        const chainData = DAILY_CHAIN[day];
-        if (!chainData) return;
-
-        const newCompleted = [...state.dailyChainCompleted];
-        newCompleted[day] = true;
-
-        // Award rewards
-        if (chainData.rewardType === "coins" && chainData.reward > 0) {
-          set({
-            dailyChainCompleted: newCompleted,
-            dailyChainDay: day + 1,
-            coins: state.coins + chainData.reward,
-          });
-        } else if (chainData.rewardType === "silver_chest") {
-          // Award silver chest
-          const silverChest = CHEST_TYPES[1];
-          const silverCoins = randomInt(silverChest.coinRange[0], silverChest.coinRange[1]);
-          let silverAvatarId: string | undefined;
-          if (Math.random() < silverChest.avatarChance) {
-            const rareAvatars = AVATARS.filter(a => a.rarity === "rare" && !state.unlockedAvatars.includes(a.id));
-            if (rareAvatars.length > 0) {
-              silverAvatarId = rareAvatars[Math.floor(Math.random() * rareAvatars.length)].id;
-            }
+          const remaining = Math.max(0, state.timerRemaining - 1);
+          set({ timerRemaining: remaining });
+          if (remaining === 0) {
+            set({ selectedOption: null });
+            get().revealAnswer();
           }
+        },
+
+        endGame: () => {
+          const state = get();
+          if (
+            state.gameSettled ||
+            state.phase !== "game" ||
+            !state.answers.length
+          )
+            return;
+          get().checkSeason();
+          get().refreshDailyTasks();
+          const summary = summarizeRound(
+            state.answers,
+            state.gameMode === "survival",
+          );
+          const correctCount = summary.correct;
+          const won =
+            state.duelMode &&
+            !!state.duelData &&
+            correctCount > state.duelData.creatorScore;
+          summary.coins += won ? 20 : 0;
+          const today = getToday();
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const dailyStreak =
+            state.lastDailyAt === today
+              ? state.dailyStreak
+              : state.lastDailyAt === localDate(yesterday)
+                ? state.dailyStreak + 1
+                : 1;
+          const gamesToday =
+            state.gamesPlayedTodayDate === today
+              ? state.gamesPlayedToday + 1
+              : 1;
+          const chestType = won
+            ? CHEST_TYPES[2]
+            : gamesToday % 5 === 0
+              ? CHEST_TYPES[1]
+              : CHEST_TYPES[0];
+          const candidates = AVATARS.filter(
+            (a) =>
+              !state.unlockedAvatars.includes(a.id) &&
+              a.rarity ===
+                (won ? "epic" : gamesToday % 5 === 0 ? "rare" : "common"),
+          );
+          const rewardAvatar =
+            candidates.length && Math.random() < chestType.avatarChance
+              ? candidates[randomInt(0, candidates.length - 1)].id
+              : undefined;
+          const totalScore = state.totalScore + summary.score;
+          const shareLink =
+            state.duelMode && !state.duelData
+              ? duelUrl({
+                  questions: state.questions.map((q) => q.id),
+                  creatorScore: correctCount,
+                  creatorName: state.playerName || "Игрок",
+                  creatorReactions: [],
+                })
+              : null;
           set({
-            dailyChainCompleted: newCompleted,
-            dailyChainDay: day + 1,
-            pendingChest: { type: "silver", rewards: { coins: silverCoins, avatarId: silverAvatarId } },
-            phase: "chest",
-          });
-        }
-
-        get().syncToCloud();
-      },
-
-      // ===== SEASON =====
-
-      checkSeason: () => {
-        const state = get();
-        const currentSeason = getBiweeklySeason();
-        const currentSeasonStart = `${new Date().getFullYear()}-S${currentSeason}`;
-
-        if (state.seasonStart !== currentSeasonStart) {
-          set({
-            seasonStart: currentSeasonStart,
-            seasonScore: 0,
-          });
-        }
-      },
-
-      // ===== TOURNAMENT =====
-
-      fetchTournament: async () => {
-        const state = get();
-        const weekKey = getWeekKey();
-        set({ tournamentWeekKey: weekKey });
-
-        try {
-          const { supabase } = await import('./supabase');
-          const { data, error } = await supabase
-            .from('weekly_leaderboard')
-            .select('*')
-            .eq('week_key', weekKey)
-            .order('score', { ascending: false })
-            .limit(10);
-
-          if (!error && data) {
-            const entries: TournamentEntry[] = data.map((row: any, i: number) => ({
-              rank: i + 1,
-              name: row.player_name,
-              avatarId: row.avatar_id,
-              score: row.score,
-              isPlayer: row.telegram_id === Number(state.telegramId),
-            }));
-            set({ tournamentData: entries });
-          }
-        } catch (e) {
-          console.error('Failed to fetch tournament:', e);
-        }
-      },
-
-      // V4.0 new actions
-      setComboStreak: (s) => {
-        const combo = getActiveCombo(s);
-        set({ comboStreak: s, comboMultiplier: combo ? combo.multiplier : 1 });
-      },
-      useContinue: () => {
-        const state = get();
-        if (state.continueUsed || state.coins < CONTINUE_COST) return false;
-        set({ coins: state.coins - CONTINUE_COST, continueUsed: true });
-        return true;
-      },
-      setProfileFrame: (frame) => set({ profileFrame: frame }),
-      processReferral: async (referrerId) => {
-        const state = get();
-        if (!state.telegramId || referrerId === Number(state.telegramId)) return;
-        set({ coins: state.coins + REFERRAL_REWARD_REFEREE, referralCount: state.referralCount + 1 });
-      },
-      claimSeasonPassTier: (tier) => {
-        const state = get();
-        if (state.seasonPassClaimed.includes(tier)) return;
-        const tierData = SEASON_PASS_TIERS.find(t => t.tier === tier);
-        if (!tierData) return;
-        const reward = tierData.reward;
-        const updates: any = { seasonPassClaimed: [...state.seasonPassClaimed, tier] };
-        if (reward.type === 'coins') updates.coins = state.coins + (reward.amount || 0);
-        if (reward.type === 'avatar' && !state.unlockedAvatars.includes(String(reward.value))) updates.unlockedAvatars = [...state.unlockedAvatars, String(reward.value)];
-        if (reward.type === 'frame') updates.profileFrame = String(reward.value);
-        if (reward.type === 'theme' && !state.unlockedThemes.includes(String(reward.value))) updates.unlockedThemes = [...state.unlockedThemes, String(reward.value)];
-        set(updates);
-      },
-      checkSeasonPassTiers: () => {
-        const state = get();
-        for (const tier of SEASON_PASS_TIERS) {
-          if (state.seasonScore >= tier.xpRequired && !state.seasonPassClaimed.includes(tier.tier)) {
-            set({ seasonPassTier: tier.tier });
-          }
-        }
-      },
-      startMiniGame: () => {
-        const statements = [...TRUE_FALSE_STATEMENTS].sort(() => Math.random() - 0.5).slice(0, 10);
-        set({
-          miniGameMode: true,
-          miniGameStatements: statements.map(s => ({ id: s.id, statement: s.statement, isTrue: s.isTrue })),
-          miniGameIndex: 0,
-          miniGameScore: 0,
-          miniGameTimer: 5,
-          phase: "mini_game",
-        });
-      },
-      answerMiniGame: (answer) => {
-        const state = get();
-        const current = state.miniGameStatements[state.miniGameIndex];
-        if (!current) return;
-        const correct = answer === current.isTrue;
-        const newScore = correct ? state.miniGameScore + 1 : state.miniGameScore;
-        const newIndex = state.miniGameIndex + 1;
-        if (newIndex >= state.miniGameStatements.length) {
-          const coinsEarned = newScore >= 8 ? newScore * 20 : newScore * 10;
-          set({
-            miniGameScore: newScore,
-            miniGameIndex: newIndex,
-            coins: state.coins + coinsEarned,
-            totalXP: state.totalXP + newScore * 5,
-            miniGameMode: false,
+            gameSettled: true,
+            isTimerRunning: false,
+            roundSummary: summary,
+            totalScore,
+            gamesPlayed: state.gamesPlayed + 1,
+            totalCorrect: state.totalCorrect + correctCount,
+            totalQuestions: state.totalQuestions + summary.answered,
+            coins: state.coins + summary.coins,
+            currentLeague: getLeagueByScore(totalScore).id,
+            dailyStreak,
+            lastDailyAt: today,
+            gamesPlayedToday: gamesToday,
+            gamesPlayedTodayDate: today,
+            gamesByDay: {
+              ...state.gamesByDay,
+              [today]: (state.gamesByDay[today] || 0) + 1,
+            },
+            survivalRecord:
+              state.gameMode === "survival"
+                ? Math.max(state.survivalRecord, summary.bestStreak)
+                : state.survivalRecord,
+            seasonScore: get().seasonScore + summary.score,
+            categoriesPlayed: state.categoryId
+              ? [...new Set([...state.categoriesPlayed, state.categoryId])]
+              : state.categoriesPlayed,
+            duelsPlayed: state.duelsPlayed + (state.duelMode ? 1 : 0),
+            duelsWon: state.duelsWon + (won ? 1 : 0),
+            duelShareLink: shareLink,
+            duelResult: state.duelData
+              ? {
+                  myScore: correctCount,
+                  opponentScore: state.duelData.creatorScore,
+                  opponentName: state.duelData.creatorName,
+                  won: !!won,
+                }
+              : null,
+            pendingChest: {
+              type: chestType.id as ChestReward["type"],
+              rewards: {
+                coins: randomInt(
+                  chestType.coinRange[0],
+                  chestType.coinRange[1],
+                ),
+                avatarId: rewardAvatar,
+              },
+            },
             phase: "result",
           });
-        } else {
-          set({ miniGameScore: newScore, miniGameIndex: newIndex, miniGameTimer: 5 });
-        }
-      },
-      rateQuestion: (questionId, liked) => {
-        const state = get();
-        set({ questionRatings: { ...state.questionRatings, [questionId]: liked } });
-      },
-      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
-      setHasSeenTutorial: (seen) => set({ hasSeenTutorial: seen }),
-      resetAll: () => set(INITIAL_STATE),
-    }),
+          get().updateDailyProgress("games", 1);
+          get().updateDailyProgress("correct", correctCount);
+          if (summary.bestStreak >= 3) get().updateDailyProgress("streak", 1);
+          if (state.categoryId) get().updateDailyProgress("category", 1);
+          if (state.duelMode) get().updateDailyProgress("duel", 1);
+          get().checkAchievements();
+          get().checkThemeUnlocks();
+          get().checkDailyChain();
+          get().checkSeasonPassTiers();
+          void get().syncToCloud();
+        },
+
+        playAgain: () => {
+          set({
+            phase: "category",
+            roundSummary: null,
+            gameSettled: false,
+            continueUsed: false,
+            duelShareLink: null,
+            questions: [],
+            currentQuestionIndex: 0,
+            answers: [],
+            timerRemaining: get().timePerQuestion,
+            selectedOption: null,
+            isRevealed: false,
+            isTimerRunning: false,
+            currentStreak: 0,
+            categoryId: null,
+            isFiftyFiftyActive: false,
+            fiftyFiftyRemoved: [],
+            isHintActive: false,
+            freezeTimeRemaining: 0,
+            activePowerUp: null,
+            aiMode: false,
+            isGeneratingQuestions: false,
+            duelMode: false,
+            duelData: null,
+            duelResult: null,
+            gameMode: "normal",
+            creatorReactions: [],
+          });
+        },
+
+        setAiMode: (enabled) => set({ aiMode: enabled }),
+        setIsGeneratingQuestions: (generating) =>
+          set({ isGeneratingQuestions: generating }),
+
+        addQuestions: (newQuestions) => {
+          const state = get();
+          set({
+            questions: [...state.questions, ...newQuestions],
+            isGeneratingQuestions: false,
+          });
+        },
+
+        usePowerUp: (id) => {
+          const state = get();
+          if (
+            state.phase !== "game" ||
+            state.isRevealed ||
+            state.selectedOption !== null
+          )
+            return;
+          if (
+            (id === "freeze" && state.freezeTimeRemaining > 0) ||
+            (id === "fiftyFifty" && state.isFiftyFiftyActive) ||
+            (id === "hint" && state.isHintActive) ||
+            !["freeze", "fiftyFifty", "hint"].includes(id)
+          )
+            return;
+
+          const pu = state.powerUps as PowerUpState;
+          const key = id as keyof PowerUpState;
+          if ((pu[key] || 0) <= 0) return;
+
+          const newState: Partial<QuizState> = {
+            powerUps: { ...pu, [key]: (pu[key] || 0) - 1 },
+            activePowerUp: id,
+          };
+
+          if (id === "freeze") {
+            newState.freezeTimeRemaining = 10;
+          } else if (id === "fiftyFifty") {
+            const question = state.questions[state.currentQuestionIndex];
+            if (!question) return;
+            const wrongOptions = question.options
+              .map((_, i) => i)
+              .filter((i) => i !== question.correctIndex);
+            const shuffled = wrongOptions.sort(() => Math.random() - 0.5);
+            const removed = shuffled.slice(
+              0,
+              Math.min(2, Math.max(0, question.options.length - 2)),
+            );
+            newState.isFiftyFiftyActive = true;
+            newState.fiftyFiftyRemoved = removed;
+            if (
+              state.selectedOption !== null &&
+              removed.includes(state.selectedOption)
+            ) {
+              newState.selectedOption = null;
+            }
+          } else if (id === "hint") {
+            newState.isHintActive = true;
+          }
+
+          set(newState as any);
+        },
+
+        buyPowerUp: (id) => {
+          const state = get();
+          const pu = POWER_UPS.find((p) => p.id === id);
+          if (!pu) return false;
+          if (state.coins < pu.price) return false;
+          const key = id as keyof PowerUpState;
+          set({
+            coins: state.coins - pu.price,
+            powerUps: {
+              ...state.powerUps,
+              [key]: (state.powerUps[key] || 0) + 1,
+            },
+          });
+          get().syncToCloud();
+          return true;
+        },
+
+        buyAvatar: (id) => {
+          const state = get();
+          const avatar = AVATARS.find((a) => a.id === id);
+          if (!avatar) return false;
+          if (state.unlockedAvatars.includes(id)) return false;
+          if (state.coins < avatar.price) return false;
+          set({
+            coins: state.coins - avatar.price,
+            unlockedAvatars: [...state.unlockedAvatars, id],
+            avatarId: id,
+          });
+          get().syncToCloud();
+          return true;
+        },
+
+        checkDailyReset: () => {
+          const state = get();
+          const today = getToday();
+
+          // Reset games played today if new day
+          if (
+            state.gamesPlayedTodayDate &&
+            state.gamesPlayedTodayDate !== today
+          ) {
+            set({ gamesPlayedToday: 0, gamesPlayedTodayDate: today });
+          }
+
+          get().checkDailyChain();
+
+          // Refresh daily tasks if new day
+          if (state.dailyTasksDate !== today) {
+            set({
+              dailyTasks: generateDailyTasks(),
+              dailyTasksDate: today,
+            });
+          }
+
+          // Reset daily streak if last play was more than 1 day ago
+          if (state.lastDailyAt && state.lastDailyAt !== today) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = localDate(yesterday);
+            if (state.lastDailyAt !== yesterdayStr) {
+              set({ dailyStreak: 0 });
+            }
+          }
+        },
+
+        refreshDailyTasks: () => {
+          const state = get();
+          const today = getToday();
+          if (state.dailyTasksDate !== today) {
+            set({
+              dailyTasks: generateDailyTasks(),
+              dailyTasksDate: today,
+            });
+          }
+        },
+
+        updateDailyProgress: (type, amount) => {
+          const state = get();
+          const updated = state.dailyTasks.map((t) =>
+            t.type === type && !t.claimed
+              ? { ...t, progress: Math.min(t.progress + amount, t.target) }
+              : t,
+          );
+          set({ dailyTasks: updated });
+        },
+
+        claimDailyReward: (taskId) => {
+          const state = get();
+          const task = state.dailyTasks.find((t) => t.id === taskId);
+          if (!task || task.progress < task.target || task.claimed) return;
+          const updated = state.dailyTasks.map((t) =>
+            t.id === taskId ? { ...t, claimed: true } : t,
+          );
+          set({
+            dailyTasks: updated,
+            coins: state.coins + task.reward,
+          });
+          get().syncToCloud();
+        },
+
+        checkAchievements: () => {
+          const state = get();
+          const unlocked = new Set(state.unlockedAchievements.map((a) => a.id));
+          const newAchs: UnlockedAchievement[] = [];
+          const now = Date.now();
+
+          for (const ach of ACHIEVEMENTS) {
+            if (unlocked.has(ach.id)) continue;
+            let earned = false;
+
+            switch (ach.id) {
+              case "first_game":
+                earned = state.gamesPlayed >= 1;
+                break;
+              case "ten_games":
+                earned = state.gamesPlayed >= 10;
+                break;
+              case "fifty_games":
+                earned = state.gamesPlayed >= 50;
+                break;
+              case "streak_3":
+                earned = state.bestStreak >= 3;
+                break;
+              case "streak_5":
+                earned = state.bestStreak >= 5;
+                break;
+              case "streak_10":
+                earned = state.bestStreak >= 10;
+                break;
+              case "perfect": {
+                const lastGame = state.answers.slice(-state.questions.length);
+                earned =
+                  lastGame.length === state.questions.length &&
+                  lastGame.length > 0 &&
+                  lastGame.every((a) => a.isCorrect);
+                break;
+              }
+              case "speed_demon": {
+                earned = state.answers.some(
+                  (a) => a.isCorrect && a.timeSpent <= 3,
+                );
+                break;
+              }
+              case "league_silver":
+                earned = state.totalScore >= 50;
+                break;
+              case "league_gold":
+                earned = state.totalScore >= 150;
+                break;
+              case "league_platinum":
+                earned = state.totalScore >= 350;
+                break;
+              case "league_diamond":
+                earned = state.totalScore >= 700;
+                break;
+              case "daily_3":
+                earned = state.dailyStreak >= 3;
+                break;
+              case "daily_7":
+                earned = state.dailyStreak >= 7;
+                break;
+              case "daily_30":
+                earned = state.dailyStreak >= 30;
+                break;
+              case "category_all":
+                earned = CATEGORIES.every((c) =>
+                  state.categoriesPlayed.includes(c.id),
+                );
+                break;
+              case "coins_100":
+                earned = state.coins >= 100;
+                break;
+              case "level_5":
+                earned = state.level >= 5;
+                break;
+              case "level_10":
+                earned = state.level >= 10;
+                break;
+              case "hundred_correct":
+                earned = state.totalCorrect >= 100;
+                break;
+              case "survival_10":
+                earned = state.survivalRecord >= 10;
+                break;
+              case "survival_20":
+                earned = state.survivalRecord >= 20;
+                break;
+              case "survival_50":
+                earned = state.survivalRecord >= 50;
+                break;
+              case "duel_winner_10":
+                earned = state.duelsWon >= 10;
+                break;
+              case "hundred_games":
+                earned = state.gamesPlayed >= 100;
+                break;
+              case "streak_15":
+                earned = state.bestStreak >= 15;
+                break;
+              case "streak_20":
+                earned = state.bestStreak >= 20;
+                break;
+              case "coins_500":
+                earned = state.coins >= 500;
+                break;
+              case "coins_1000":
+                earned = state.coins >= 1000;
+                break;
+              case "level_15":
+                earned = state.level >= 15;
+                break;
+              case "level_25":
+                earned = state.level >= 25;
+                break;
+              case "five_hundred_correct":
+                earned = state.totalCorrect >= 500;
+                break;
+              case "thousand_correct":
+                earned = state.totalCorrect >= 1000;
+                break;
+              case "duel_first":
+                earned = (state as any).duelsPlayed >= 1;
+                break;
+              case "duel_master":
+                earned = (state as any).duelsWon >= 25;
+                break;
+              case "theme_collector":
+                earned = (state as any).unlockedThemes?.length >= 4;
+                break;
+            }
+
+            if (earned) {
+              newAchs.push({ id: ach.id, unlockedAt: now });
+            }
+          }
+
+          if (newAchs.length > 0) {
+            const totalReward = newAchs.reduce((sum, a) => {
+              const achData = ACHIEVEMENTS.find((ad) => ad.id === a.id);
+              return sum + (achData?.reward || 0);
+            }, 0);
+
+            set({
+              unlockedAchievements: [...state.unlockedAchievements, ...newAchs],
+              newAchievements: [
+                ...state.newAchievements,
+                ...newAchs.map((a) => a.id),
+              ],
+              coins: state.coins + totalReward,
+            });
+          }
+        },
+
+        startDuel: (questions) => {
+          get().startGame(null, questions, false, "normal");
+          if (get().phase === "game") set({ duelMode: true });
+        },
+        joinDuel: (duelData, questions) => {
+          get().startGame(null, questions, false, "normal");
+          if (get().phase === "game") set({ duelMode: true, duelData });
+        },
+        addCreatorReaction: (emoji) => {
+          const reactions = [...get().creatorReactions];
+          reactions[get().currentQuestionIndex] = emoji;
+          set({ creatorReactions: reactions });
+        },
+        finishDuelCreator: () => {
+          get().endGame();
+          return get().duelShareLink || "";
+        },
+        finishDuelChallenger: () => {
+          get().endGame();
+        },
+
+        // ===== THEME ACTIONS =====
+
+        setTheme: (themeId) => {
+          const state = get();
+          if (!state.unlockedThemes.includes(themeId)) return;
+          set({ currentTheme: themeId });
+          get().syncToCloud();
+        },
+
+        unlockTheme: (themeId) => {
+          const state = get();
+          if (state.unlockedThemes.includes(themeId)) return;
+          set({ unlockedThemes: [...state.unlockedThemes, themeId] });
+          get().syncToCloud();
+        },
+
+        checkThemeUnlocks: () => {
+          const state = get();
+          for (const theme of THEMES) {
+            if (state.unlockedThemes.includes(theme.id)) continue;
+            let shouldUnlock = false;
+            switch (theme.unlockCondition) {
+              case "default":
+                shouldUnlock = true;
+                break;
+              case "level":
+                shouldUnlock = state.level >= theme.unlockValue;
+                break;
+              case "coins":
+                shouldUnlock = state.coins >= theme.unlockValue;
+                break;
+              case "duels":
+                shouldUnlock = state.duelsWon >= theme.unlockValue;
+                break;
+              case "streak":
+                shouldUnlock = state.dailyStreak >= theme.unlockValue;
+                break;
+            }
+            if (shouldUnlock) {
+              get().unlockTheme(theme.id);
+            }
+          }
+        },
+
+        // ===== CHEST ACTIONS =====
+
+        openChest: () => {
+          const state = get();
+          if (!state.pendingChest) return;
+
+          const chest = state.pendingChest;
+          let newUnlockedAvatars = [...state.unlockedAvatars];
+          if (
+            chest.rewards.avatarId &&
+            !newUnlockedAvatars.includes(chest.rewards.avatarId)
+          ) {
+            newUnlockedAvatars.push(chest.rewards.avatarId);
+          }
+
+          set({
+            coins: state.coins + chest.rewards.coins,
+            unlockedAvatars: newUnlockedAvatars,
+            pendingChest: null,
+            phase: "result",
+          });
+
+          get().syncToCloud();
+        },
+
+        // ===== DAILY CHAIN =====
+
+        checkDailyChain: () => {
+          const state = get();
+          const today = getToday();
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (
+            state.dailyChainClaimedAt !== today &&
+            ((state.dailyChainClaimedAt &&
+              state.dailyChainClaimedAt !== localDate(yesterday)) ||
+              state.dailyChainDay >= 7)
+          ) {
+            set({
+              dailyChainDay: 0,
+              dailyChainCompleted: [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+              ],
+              dailyChainClaimedAt: null,
+            });
+          }
+          set({ dailyChainDate: today });
+        },
+
+        claimDailyChain: (day: number) => {
+          const state = get();
+          if (
+            day !== state.dailyChainDay ||
+            state.dailyChainClaimedAt === getToday() ||
+            state.lastDailyAt !== getToday()
+          )
+            return;
+          if (state.dailyChainCompleted[day]) return;
+
+          const chainData = DAILY_CHAIN[day];
+          if (!chainData) return;
+
+          const newCompleted = [...state.dailyChainCompleted];
+          newCompleted[day] = true;
+
+          // Award rewards
+          if (chainData.rewardType === "coins" && chainData.reward > 0) {
+            set({
+              dailyChainClaimedAt: getToday(),
+              dailyChainCompleted: newCompleted,
+              dailyChainDay: day + 1,
+              coins: state.coins + chainData.reward,
+            });
+          } else if (chainData.rewardType === "silver_chest") {
+            // Award silver chest
+            const silverChest = CHEST_TYPES[1];
+            const silverCoins = randomInt(
+              silverChest.coinRange[0],
+              silverChest.coinRange[1],
+            );
+            let silverAvatarId: string | undefined;
+            if (Math.random() < silverChest.avatarChance) {
+              const rareAvatars = AVATARS.filter(
+                (a) =>
+                  a.rarity === "rare" && !state.unlockedAvatars.includes(a.id),
+              );
+              if (rareAvatars.length > 0) {
+                silverAvatarId =
+                  rareAvatars[Math.floor(Math.random() * rareAvatars.length)]
+                    .id;
+              }
+            }
+            set({
+              dailyChainClaimedAt: getToday(),
+              dailyChainCompleted: newCompleted,
+              dailyChainDay: day + 1,
+              pendingChest: {
+                type: "silver",
+                rewards: { coins: silverCoins, avatarId: silverAvatarId },
+              },
+              phase: "chest",
+            });
+          }
+
+          get().syncToCloud();
+        },
+
+        // ===== SEASON =====
+
+        checkSeason: () => {
+          const state = get();
+          const currentSeason = getBiweeklySeason();
+          const currentSeasonStart = `${new Date().getFullYear()}-S${currentSeason}`;
+
+          if (state.seasonStart !== currentSeasonStart) {
+            set({
+              seasonStart: currentSeasonStart,
+              seasonScore: 0,
+              seasonPassTier: 0,
+              seasonPassClaimed: [],
+            });
+          }
+        },
+
+        // ===== TOURNAMENT =====
+
+        fetchTournament: async () => {
+          const state = get();
+          const weekKey = getWeekKey();
+          set({ tournamentWeekKey: weekKey });
+
+          try {
+            const { supabase } = await import("./supabase");
+            const { data, error } = await supabase
+              .from("weekly_leaderboard")
+              .select("*")
+              .eq("week_key", weekKey)
+              .order("score", { ascending: false })
+              .limit(10);
+
+            if (!error && data) {
+              const entries: TournamentEntry[] = data.map(
+                (row: any, i: number) => ({
+                  rank: i + 1,
+                  name: row.player_name,
+                  avatarId: row.avatar_id,
+                  score: row.score,
+                  isPlayer: row.telegram_id === Number(state.telegramId),
+                }),
+              );
+              set({ tournamentData: entries });
+            }
+          } catch (e) {
+            console.error("Failed to fetch tournament:", e);
+          }
+        },
+
+        // V4.0 new actions
+        setComboStreak: (s) => {
+          const combo = getActiveCombo(s);
+          set({
+            comboStreak: s,
+            comboMultiplier: combo ? combo.multiplier : 1,
+          });
+        },
+        useContinue: () => {
+          const state = get();
+          if (
+            state.phase !== "game" ||
+            state.gameMode !== "survival" ||
+            !state.isRevealed ||
+            state.answers.at(-1)?.isCorrect ||
+            state.continueUsed ||
+            state.coins < CONTINUE_COST
+          )
+            return false;
+          set({ coins: state.coins - CONTINUE_COST, continueUsed: true });
+          get().nextQuestion();
+          return true;
+        },
+        setProfileFrame: (frame) => set({ profileFrame: frame }),
+        processReferral: async (referrerId) => {
+          const state = get();
+          if (
+            !state.telegramId ||
+            !Number.isSafeInteger(referrerId) ||
+            referrerId <= 0 ||
+            referrerId === Number(state.telegramId) ||
+            state.processedReferrals.length
+          )
+            return;
+          set({
+            coins: state.coins + REFERRAL_REWARD_REFEREE,
+            processedReferrals: [referrerId],
+          });
+        },
+        claimSeasonPassTier: (tier) => {
+          const state = get();
+          if (state.seasonPassClaimed.includes(tier)) return;
+          const tierData = SEASON_PASS_TIERS.find((t) => t.tier === tier);
+          if (!tierData || state.seasonScore < tierData.xpRequired) return;
+          const reward = tierData.reward;
+          const updates: any = {
+            seasonPassClaimed: [...state.seasonPassClaimed, tier],
+          };
+          if (reward.type === "coins")
+            updates.coins = state.coins + (reward.amount || 0);
+          if (
+            reward.type === "avatar" &&
+            !state.unlockedAvatars.includes(String(reward.value))
+          )
+            updates.unlockedAvatars = [
+              ...state.unlockedAvatars,
+              String(reward.value),
+            ];
+          if (reward.type === "frame")
+            updates.profileFrame = String(reward.value);
+          if (
+            reward.type === "theme" &&
+            !state.unlockedThemes.includes(String(reward.value))
+          )
+            updates.unlockedThemes = [
+              ...state.unlockedThemes,
+              String(reward.value),
+            ];
+          set(updates);
+        },
+        checkSeasonPassTiers: () => {
+          const state = get();
+          for (const tier of SEASON_PASS_TIERS) {
+            if (
+              state.seasonScore >= tier.xpRequired &&
+              !state.seasonPassClaimed.includes(tier.tier)
+            ) {
+              set({ seasonPassTier: tier.tier });
+            }
+          }
+        },
+        startMiniGame: () => {
+          get().startGame(
+            "true_false",
+            getMixedQuestions(1000)
+              .filter((q) => q.category === "true_false")
+              .slice(0, 10),
+          );
+        },
+        answerMiniGame: () => {},
+        rateQuestion: (questionId, liked) => {
+          const state = get();
+          set({
+            questionRatings: { ...state.questionRatings, [questionId]: liked },
+          });
+        },
+        setNotificationsEnabled: (enabled) =>
+          set({ notificationsEnabled: enabled }),
+        setHasSeenTutorial: (seen) => set({ hasSeenTutorial: seen }),
+        resetAll: () => set(INITIAL_STATE),
+      };
+    },
     {
       name: "kvizlik-storage",
       partialize: (state) => ({
+        savedAt: state.savedAt,
+        dailyChainClaimedAt: state.dailyChainClaimedAt,
+        lastCloudSync: state.lastCloudSync,
+        processedReferrals: state.processedReferrals,
+        pendingChest: state.pendingChest,
         playerName: state.playerName,
         telegramId: state.telegramId,
         totalScore: state.totalScore,
@@ -1820,9 +1837,8 @@ export const useQuizStore = create<QuizState>()(
         merged.isCloudLoaded = false;
         return merged;
       },
-    }
-  )
+    },
+  ),
 );
 
 export { calcLevel, calcXpForLevel };
-

@@ -1,183 +1,114 @@
-'use client';
-
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useQuizStore } from '@/lib/quiz-store';
-import { POWER_UPS, AVATARS, RARITY_COLORS, RARITY_NAMES } from '@/lib/quiz-data';
-import { useTelegram } from '@/hooks/use-telegram';
-import { ArrowLeft } from 'lucide-react';
-
+"use client";
+import { useState } from "react";
+import { Check, Snowflake, Lightbulb } from "lucide-react";
+import { useQuizStore } from "@/lib/quiz-store";
+import { AVATARS, POWER_UPS } from "@/lib/quiz-data";
+import { ScreenHeading } from "./QuizUI";
 export default function ShopScreen() {
-  const { coins, powerUps, unlockedAvatars, avatarId, buyPowerUp, buyAvatar, setAvatar, setPhase } = useQuizStore();
-  const { haptic } = useTelegram();
-  const [tab, setTab] = useState<'bonuses' | 'avatars'>('bonuses');
-
-  const handleBuyPowerUp = (id: string) => {
-    const pu = POWER_UPS.find(p => p.id === id);
-    if (!pu || coins < pu.price) {
-      haptic('error');
-      return;
-    }
-    haptic('success');
-    buyPowerUp(id);
+  const s = useQuizStore();
+  const [tab, setTab] = useState("bonuses");
+  const [notice, setNotice] = useState("");
+  const buy = (id: string, avatar = false) => {
+    const ok = avatar ? s.buyAvatar(id) : s.buyPowerUp(id);
+    setNotice(
+      ok
+        ? "Готово! Покупка в твоём профиле."
+        : "Не хватает монет. Их можно получить в игре.",
+    );
   };
-
-  const handleBuyAvatar = (id: string) => {
-    const av = AVATARS.find(a => a.id === id);
-    if (!av || coins < av.price || unlockedAvatars.includes(id)) {
-      haptic('error');
-      return;
-    }
-    haptic('success');
-    buyAvatar(id);
-  };
-
-  const handleEquip = (id: string) => {
-    haptic('light');
-    setAvatar(id);
-  };
-
   return (
-    <div className="min-h-[100dvh] bg-[var(--theme-bg)] px-4 py-4 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
+    <div className="q-screen">
+      <ScreenHeading
+        title="Немного преимущества"
+        eyebrow="Магазин за игровые монеты"
+        action={<span className="q-pill">{s.coins} монет</span>}
+      />
+      <div className="q-segments">
         <button
-          onClick={() => { haptic('light'); setPhase('home'); }}
-          className="w-9 h-9 rounded-xl bg-[var(--theme-card)] border border-white/10 flex items-center justify-center hover:bg-[var(--theme-card-hover)] active:scale-95 transition-all"
+          className={tab === "bonuses" ? "active" : ""}
+          onClick={() => setTab("bonuses")}
         >
-          <ArrowLeft className="w-4 h-4 text-white/70" />
-        </button>
-        <h2 className="text-white font-bold text-lg">Магазин</h2>
-        <div className="ml-auto flex items-center gap-1 bg-[var(--theme-card)] border border-white/10 rounded-xl px-3 py-1.5">
-          <span className="text-sm">🪙</span>
-          <span className="text-yellow-400 font-bold text-sm">{coins}</span>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => { haptic('light'); setTab('bonuses'); }}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
-            tab === 'bonuses'
-              ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
-              : 'bg-[var(--theme-card)] border border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)]'
-          }`}
-        >
-          Бонусы
+          Подсказки
         </button>
         <button
-          onClick={() => { haptic('light'); setTab('avatars'); }}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
-            tab === 'avatars'
-              ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
-              : 'bg-[var(--theme-card)] border border-white/10 text-white/50 hover:bg-[var(--theme-card-hover)]'
-          }`}
+          className={tab === "avatars" ? "active" : ""}
+          onClick={() => setTab("avatars")}
         >
           Аватары
         </button>
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto pb-4" style={{ maxHeight: 'calc(100dvh - 160px)' }}>
-        {tab === 'bonuses' && (
-          <div className="flex flex-col gap-3">
-            {POWER_UPS.map((pu, i) => {
-              const count = powerUps[pu.id as keyof typeof powerUps];
-              const canBuy = coins >= pu.price;
-              return (
-                <motion.div
-                  key={pu.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="bg-[var(--theme-card)] border border-white/10 rounded-2xl p-4 flex items-center gap-3"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-[var(--theme-card-hover)] flex items-center justify-center text-2xl border border-white/10">
-                    {pu.emoji}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-sm">{pu.name}</p>
-                    <p className="text-white/40 text-[10px]">{pu.description}</p>
-                    <p className="text-white/50 text-xs mt-0.5">Есть: {count}</p>
-                  </div>
-                  <button
-                    onClick={() => handleBuyPowerUp(pu.id)}
-                    disabled={!canBuy}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      canBuy
-                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white active:scale-95'
-                        : 'bg-white/5 text-white/20 cursor-not-allowed'
-                    }`}
-                  >
-                    🪙 {pu.price}
-                  </button>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-
-        {tab === 'avatars' && (
-          <div className="grid grid-cols-2 gap-3">
-            {AVATARS.map((av, i) => {
-              const owned = unlockedAvatars.includes(av.id);
-              const equipped = avatarId === av.id;
-              const canBuy = coins >= av.price && !owned;
-              const rarityColor = RARITY_COLORS[av.rarity];
-              const rarityName = RARITY_NAMES[av.rarity];
-
-              return (
-                <motion.div
-                  key={av.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className={`bg-[var(--theme-card)] border rounded-2xl p-3.5 flex flex-col items-center text-center ${
-                    equipped ? 'border-purple-500/50' : 'border-white/10'
-                  }`}
-                >
-                  {/* Rarity Badge */}
-                  <span
-                    className="text-[8px] font-bold px-1.5 py-0.5 rounded-full mb-2"
-                    style={{ backgroundColor: rarityColor + '20', color: rarityColor }}
-                  >
-                    {rarityName}
-                  </span>
-
-                  <span className="text-3xl mb-1.5">{av.emoji}</span>
-                  <p className="text-white font-bold text-xs mb-1">{av.name}</p>
-
-                  {owned ? (
-                    equipped ? (
-                      <span className="text-purple-400 text-[10px] font-bold mt-1">✓ Активен</span>
-                    ) : (
-                      <button
-                        onClick={() => handleEquip(av.id)}
-                        className="mt-1 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[10px] font-bold hover:bg-purple-500/30 active:scale-95 transition-all"
-                      >
-                        Надеть
-                      </button>
-                    )
+      {notice && (
+        <p className="q-intro" role="status">
+          {notice}
+        </p>
+      )}
+      {tab === "bonuses" ? (
+        <div className="q-collection">
+          {POWER_UPS.map((p) => (
+            <article key={p.id}>
+              <span className="q-shortcut-icon">
+                {p.id === "freeze" ? (
+                  <Snowflake />
+                ) : p.id === "hint" ? (
+                  <Lightbulb />
+                ) : (
+                  "50:50"
+                )}
+              </span>
+              <div>
+                <h2>{p.name}</h2>
+                <p>{p.description}</p>
+                <small>
+                  У тебя: {s.powerUps[p.id as keyof typeof s.powerUps]}
+                </small>
+              </div>
+              <button
+                className="q-buy"
+                disabled={s.coins < p.price}
+                onClick={() => buy(p.id)}
+              >
+                {p.price} 🪙
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="q-avatar-grid">
+          {AVATARS.map((a) => {
+            const owned = s.unlockedAvatars.includes(a.id);
+            return (
+              <button
+                key={a.id}
+                disabled={!owned && s.coins < a.price}
+                className={s.avatarId === a.id ? "selected" : ""}
+                onClick={() => {
+                  if (owned) {
+                    s.setAvatar(a.id);
+                    void s.syncToCloud();
+                  } else buy(a.id, true);
+                }}
+              >
+                <span>{a.emoji}</span>
+                <strong>{a.name}</strong>
+                <small>
+                  {s.avatarId === a.id ? (
+                    <Check size={16} />
+                  ) : owned ? (
+                    "Выбрать"
                   ) : (
-                    <button
-                      onClick={() => handleBuyAvatar(av.id)}
-                      disabled={!canBuy}
-                      className={`mt-1 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
-                        canBuy
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white active:scale-95'
-                          : 'bg-white/5 text-white/20 cursor-not-allowed'
-                      }`}
-                    >
-                      🪙 {av.price}
-                    </button>
+                    `${a.price} монет`
                   )}
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p className="q-footnote">
+        Здесь используются только игровые монеты.
+        <br />
+        Оплата реальными деньгами не требуется.
+      </p>
     </div>
   );
 }

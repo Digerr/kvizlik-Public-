@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
+import { NextResponse } from "next/server";
+import ZAI from "z-ai-web-dev-sdk";
 
 interface GeneratedQuestion {
   id: string;
@@ -12,44 +12,52 @@ interface GeneratedQuestion {
 }
 
 const CATEGORY_NAMES: Record<string, string> = {
-  general: 'Общие знания',
-  science: 'Наука',
-  history: 'История',
-  movies: 'Кино и сериалы',
-  tech: 'Технологии',
-  sport: 'Спорт',
-  geography: 'География',
-  music: 'Музыка',
-  food: 'Еда и напитки',
-  nature: 'Природа',
+  general: "Общие знания",
+  science: "Наука",
+  history: "История",
+  movies: "Кино и сериалы",
+  tech: "Технологии",
+  sport: "Спорт",
+  geography: "География",
+  music: "Музыка",
+  food: "Еда и напитки",
+  nature: "Природа",
 };
 
 const DIFFICULTY_LABELS: Record<number, string> = {
-  1: 'лёгкая',
-  2: 'средняя',
-  3: 'сложная',
+  1: "лёгкая",
+  2: "средняя",
+  3: "сложная",
 };
 
 export async function POST(req: Request) {
+  if (process.env.ENABLE_AI_QUESTIONS !== "true")
+    return NextResponse.json({ error: "Генератор отключён" }, { status: 503 });
   try {
     const { category, difficulty, count = 5 } = await req.json();
 
-    if (!category || !difficulty) {
+    if (
+      !Object.hasOwn(CATEGORY_NAMES, category) ||
+      ![1, 2, 3].includes(difficulty) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 10
+    ) {
       return NextResponse.json(
-        { error: 'Не указана категория или сложность' },
-        { status: 400 }
+        { error: "Некорректная категория, сложность или количество вопросов" },
+        { status: 400 },
       );
     }
 
     const categoryName = CATEGORY_NAMES[category] || category;
-    const difficultyLabel = DIFFICULTY_LABELS[difficulty] || 'средняя';
+    const difficultyLabel = DIFFICULTY_LABELS[difficulty] || "средняя";
 
     const zai = await ZAI.create();
 
     const completion = await zai.chat.completions.create({
       messages: [
         {
-          role: 'system',
+          role: "system",
           content: `Ты — генератор вопросов для квиз-игры «КВИЗЛИК». Твоя задача — создавать интересные, нестандартные вопросы на русском языке.
 
 ПРАВИЛА:
@@ -77,7 +85,7 @@ export async function POST(req: Request) {
 difficulty: 1 = лёгкая, 2 = средняя, 3 = сложная`,
         },
         {
-          role: 'user',
+          role: "user",
           content: `Сгенерируй ${count} вопросов для квиза.
 Категория: "${categoryName}" (id: ${category})
 Сложность: ${difficultyLabel} (${difficulty})
@@ -91,17 +99,19 @@ difficulty: 1 = лёгкая, 2 = средняя, 3 = сложная`,
     const content = completion.choices?.[0]?.message?.content;
     if (!content) {
       return NextResponse.json(
-        { error: 'AI не вернул ответ' },
-        { status: 500 }
+        { error: "AI не вернул ответ" },
+        { status: 500 },
       );
     }
 
     // Try to parse the response - handle potential markdown wrapping
     let jsonStr = content.trim();
-    
+
     // Remove markdown code blocks if present
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr
+        .replace(/^```(?:json)?\s*\n?/, "")
+        .replace(/\n?```\s*$/, "");
     }
 
     let questions: GeneratedQuestion[];
@@ -114,40 +124,59 @@ difficulty: 1 = лёгкая, 2 = средняя, 3 = сложная`,
         questions = JSON.parse(match[0]);
       } else {
         return NextResponse.json(
-          { error: 'Не удалось разобрать ответ AI', raw: content },
-          { status: 500 }
+          { error: "Не удалось разобрать ответ AI" },
+          { status: 500 },
         );
       }
     }
 
     if (!Array.isArray(questions)) {
       return NextResponse.json(
-        { error: 'Ответ AI не является массивом' },
-        { status: 500 }
+        { error: "Ответ AI не является массивом" },
+        { status: 500 },
       );
     }
 
     // Validate and normalize questions
-    const validatedQuestions: GeneratedQuestion[] = questions.map((q: GeneratedQuestion, i: number) => ({
-      id: q.id || `ai_${category}_${Date.now()}_${i}`,
-      category: q.category || category,
-      question: q.question || 'Вопрос не сгенерирован',
-      options: Array.isArray(q.options) && q.options.length === 4
-        ? q.options
-        : ['Вариант 1', 'Вариант 2', 'Вариант 3', 'Вариант 4'],
-      correctIndex: typeof q.correctIndex === 'number' && q.correctIndex >= 0 && q.correctIndex <= 3
-        ? q.correctIndex
-        : 0,
-      difficulty: [1, 2, 3].includes(q.difficulty) ? q.difficulty : (difficulty as 1 | 2 | 3),
-      funFact: q.funFact || undefined,
-    }));
+    const validatedQuestions = questions
+      .filter(
+        (q) =>
+          q &&
+          typeof q.question === "string" &&
+          q.question.trim().length >= 8 &&
+          q.question.length <= 400 &&
+          Array.isArray(q.options) &&
+          q.options.length === 4 &&
+          q.options.every(
+            (o) =>
+              typeof o === "string" && o.trim().length > 0 && o.length <= 150,
+          ) &&
+          new Set(q.options.map((o) => o.trim().toLowerCase())).size === 4 &&
+          Number.isInteger(q.correctIndex) &&
+          q.correctIndex >= 0 &&
+          q.correctIndex < 4,
+      )
+      .slice(0, count)
+      .map((q, i) => ({
+        ...q,
+        id: `ai_${Date.now()}_${i}`,
+        category,
+        difficulty,
+        funFact:
+          typeof q.funFact === "string" ? q.funFact.slice(0, 600) : undefined,
+      }));
+    if (validatedQuestions.length !== count)
+      return NextResponse.json(
+        { error: "Генератор вернул некорректные вопросы" },
+        { status: 502 },
+      );
 
     return NextResponse.json({ questions: validatedQuestions });
   } catch (error) {
-    console.error('Generate questions error:', error);
+    console.error("Generate questions error:", error);
     return NextResponse.json(
-      { error: 'Ошибка при генерации вопросов' },
-      { status: 500 }
+      { error: "Ошибка при генерации вопросов" },
+      { status: 500 },
     );
   }
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+export {};
 /**
  * КВИЗЛИК — Telegram Bot Webhook Handler
  * 

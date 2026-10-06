@@ -1,539 +1,123 @@
-'use client';
-
-import { useQuizStore, type DuelData } from '@/lib/quiz-store';
-import { THEMES } from '@/lib/quiz-data';
-import HomeScreen from '@/components/game/HomeScreen';
-import CategoryScreen from '@/components/game/CategoryScreen';
-import GameScreen from '@/components/game/GameScreen';
-import ResultScreen from '@/components/game/ResultScreen';
-import LeaderboardScreen from '@/components/game/LeaderboardScreen';
-import ProfileScreen from '@/components/game/ProfileScreen';
-import AchievementsScreen from '@/components/game/AchievementsScreen';
-import ShopScreen from '@/components/game/ShopScreen';
-import DailyScreen from '@/components/game/DailyScreen';
-import DuelScreen from '@/components/game/DuelScreen';
-import DuelResultScreen from '@/components/game/DuelResultScreen';
-import ThemesScreen from '@/components/game/ThemesScreen';
-import ChestScreen from '@/components/game/ChestScreen';
-import TournamentScreen from '@/components/game/TournamentScreen';
-import FaqScreen from '@/components/game/FaqScreen';
-import SeasonPassScreen from '@/components/game/SeasonPassScreen';
-import EventScreen from '@/components/game/EventScreen';
-import MiniGameScreen from '@/components/game/MiniGameScreen';
-import FriendsScreen from '@/components/game/FriendsScreen';
-import ClanScreen from '@/components/game/ClanScreen';
-import SubmitQuestionScreen from '@/components/game/SubmitQuestionScreen';
-import OnboardingScreen from '@/components/game/OnboardingScreen';
-import PrivacyPolicyScreen from '@/components/game/PrivacyPolicyScreen';
-import UnsupportedScreen from '@/components/game/UnsupportedScreen';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState, useCallback } from 'react';
-import { getQuestionsByIds, getMixedQuestions } from '@/lib/quiz-data';
-import { detectPlatform, usePlatform } from '@/hooks/use-platform';
-
-const phaseComponents: Record<string, React.ComponentType> = {
+"use client";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { MotionConfig } from "framer-motion";
+import { useQuizStore } from "@/lib/quiz-store";
+import { usePlatform } from "@/hooks/use-platform";
+import { decodeDuel } from "@/lib/duel";
+import { getQuestionsByIds } from "@/lib/quiz-data";
+import HomeScreen from "@/components/game/HomeScreen";
+import { BottomNav } from "@/components/game/QuizUI";
+const loading = () => (
+  <div className="q-screen q-loading" role="status">
+    Открываем…
+  </div>
+);
+const screen = (load: () => Promise<{ default: React.ComponentType }>) =>
+  dynamic(load, { loading });
+const screens: Record<string, React.ComponentType> = {
   home: HomeScreen,
-  category: CategoryScreen,
-  game: GameScreen,
-  result: ResultScreen,
-  leaderboard: LeaderboardScreen,
-  profile: ProfileScreen,
-  achievements: AchievementsScreen,
-  shop: ShopScreen,
-  daily: DailyScreen,
-  duel: DuelScreen,
-  duel_result: DuelResultScreen,
-  themes: ThemesScreen,
-  chest: ChestScreen,
-  tournament: TournamentScreen,
-  faq: FaqScreen,
-  season_pass: SeasonPassScreen,
-  event: EventScreen,
-  mini_game: MiniGameScreen,
-  friends: FriendsScreen,
-  clan: ClanScreen,
-  submit_question: SubmitQuestionScreen,
-  onboarding: OnboardingScreen,
-  privacy_policy: PrivacyPolicyScreen,
-  unsupported: UnsupportedScreen,
+  category: screen(() => import("@/components/game/CategoryScreen")),
+  game: screen(() => import("@/components/game/GameScreen")),
+  result: screen(() => import("@/components/game/ResultScreen")),
+  duel_result: screen(() => import("@/components/game/ResultScreen")),
+  leaderboard: screen(() => import("@/components/game/LeaderboardScreen")),
+  profile: screen(() => import("@/components/game/ProfileScreen")),
+  achievements: screen(() => import("@/components/game/AchievementsScreen")),
+  shop: screen(() => import("@/components/game/ShopScreen")),
+  daily: screen(() => import("@/components/game/DailyScreen")),
+  duel: screen(() => import("@/components/game/DuelScreen")),
+  themes: screen(() => import("@/components/game/ThemesScreen")),
+  chest: screen(() => import("@/components/game/ChestScreen")),
+  faq: screen(() => import("@/components/game/FaqScreen")),
+  onboarding: screen(() => import("@/components/game/OnboardingScreen")),
+  privacy_policy: screen(() => import("@/components/game/PrivacyPolicyScreen")),
 };
-
-// ---------------------------------------------------------------------------
-// Notification helpers
-// ---------------------------------------------------------------------------
-
-const LS_LAST_PLAY_DATE = 'kvizlik_last_play_date';
-const LS_NOTIF_ASKED = 'kvizlik_notif_asked';
-
-function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-function hasPlayedToday(): boolean {
-  try {
-    const lastPlay = localStorage.getItem(LS_LAST_PLAY_DATE);
-    return lastPlay === getTodayStr();
-  } catch {
-    return false;
-  }
-}
-
-function markPlayedToday(): void {
-  try {
-    localStorage.setItem(LS_LAST_PLAY_DATE, getTodayStr());
-  } catch {
-    // localStorage unavailable – ignore
-  }
-}
-
-function hasNotifBeenAsked(): boolean {
-  try {
-    return localStorage.getItem(LS_NOTIF_ASKED) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function markNotifAsked(): void {
-  try {
-    localStorage.setItem(LS_NOTIF_ASKED, 'true');
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Attempt to request notification / write access through the Telegram WebApp
- * API.  Falls back gracefully when the API is unavailable (e.g. dev browser).
- */
-function requestNotifications(): void {
-  try {
-    const tg = window.Telegram?.WebApp;
-    // Prefer requestWriteAccess (grants permission to send messages from bot)
-    if (typeof tg?.requestWriteAccess === 'function') {
-      tg.requestWriteAccess((granted: boolean) => {
-        if (granted) {
-          console.log('[KVIZLIK] Write access granted – bot can send reminders');
-        }
-      });
-    }
-  } catch {
-    console.warn('[KVIZLIK] Telegram requestWriteAccess not available');
-  }
-}
-
-/**
- * Show a friendly Telegram popup asking the user if they want daily
- * reminders.  Only shown once (tracked in localStorage).
- */
-function showNotifPermissionPopup(): void {
-  if (hasNotifBeenAsked()) return;
-
-  try {
-    const tg = window.Telegram?.WebApp;
-    if (typeof tg?.showPopup === 'function') {
-      tg.showPopup(
-        {
-          title: 'Ежедневные напоминания',
-          message: 'Хотите получать напоминания играть каждый день? \uD83D\uDD14',
-          buttons: [
-            { type: 'ok', text: 'Да, хочу!' },
-            { type: 'cancel', text: 'Нет, спасибо' },
-          ],
-        },
-        (buttonId: string) => {
-          if (buttonId === 'ok' || buttonId === '') {
-            requestNotifications();
-          }
-          // Mark as asked regardless of answer so we never show it again
-          markNotifAsked();
-        },
-      );
-    } else {
-      // Running outside Telegram – just mark as asked so we don't retry
-      markNotifAsked();
-    }
-  } catch {
-    markNotifAsked();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Hooks
-// ---------------------------------------------------------------------------
-
-function useDuelUrlHandler() {
-  const { joinDuel, setPhase } = useQuizStore();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const duelParam = params.get('duel');
-
-    if (duelParam) {
-      try {
-        const decoded = JSON.parse(decodeURIComponent(atob(duelParam)));
-        const duelData: DuelData = {
-          questions: decoded.questions,
-          creatorScore: decoded.creatorScore,
-          creatorName: decoded.creatorName,
-          creatorReactions: decoded.creatorReactions || [],
-        };
-
-        const questions = getQuestionsByIds(duelData.questions);
-
-        if (questions.length > 0) {
-          joinDuel(duelData, questions);
-        } else {
-          const fallbackQuestions = getMixedQuestions(10, []);
-          joinDuel(duelData, fallbackQuestions);
-        }
-
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, '', cleanUrl);
-      } catch {
-        console.error('Invalid duel parameter');
-      }
-    }
-  }, [joinDuel, setPhase]);
-}
-
-function useReferralHandler() {
-  const { telegramId, processReferral } = useQuizStore();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const platform = detectPlatform();
-
-    // Telegram referral: ?startapp=ref_XXXX
-    const startParam = params.get('startapp') || params.get('startApp') || window.Telegram?.WebApp?.initData?.start_param;
-    if (startParam && startParam.startsWith('ref_')) {
-      const referrerId = parseInt(startParam.replace('ref_', ''));
-      if (referrerId && referrerId !== Number(telegramId)) {
-        processReferral(referrerId);
-      }
-    }
-
-    // VK referral: ?vk_ref=ref_XXXX
-    const vkRef = params.get('vk_ref');
-    if (platform === 'vk' && vkRef && vkRef.startsWith('ref_')) {
-      const referrerId = parseInt(vkRef.replace('ref_', ''));
-      if (referrerId && referrerId !== Number(telegramId?.replace('vk_', ''))) {
-        processReferral(referrerId);
-      }
-    }
-  }, [telegramId, processReferral]);
-}
-
-interface CloudSyncResult {
-  gamesPlayedToday: number;
-  showReminder: boolean;
-}
-
-function useCloudSync(): CloudSyncResult {
-  const { telegramId, syncFromCloud, isCloudLoaded, gamesPlayedToday: storeGamesToday } = useQuizStore();
-  const [showReminder, setShowReminder] = useState(false);
-
-  useEffect(() => {
-    if (telegramId && !isCloudLoaded) {
-      syncFromCloud();
-    }
-  }, [telegramId, isCloudLoaded, syncFromCloud]);
-
-  // After cloud sync completes, determine reminder state
-  useEffect(() => {
-    if (!isCloudLoaded) return;
-
-    const playedToday = storeGamesToday > 0 || hasPlayedToday();
-    setShowReminder(!playedToday);
-
-    // Persist today's play date if the user *has* played
-    if (storeGamesToday > 0) {
-      markPlayedToday();
-    }
-  }, [isCloudLoaded, storeGamesToday]);
-
-  return { gamesPlayedToday: storeGamesToday, showReminder };
-}
-
-/**
- * Hook that manages the notification reminder system.
- * - Shows a "haven't played today" banner on the Home screen
- * - Shows a one-time Telegram popup asking about daily reminders
- * - Provides motivational messages based on streak / inactivity
- */
-function useNotificationReminder(showReminder: boolean) {
-  const { setPhase } = useQuizStore();
-  const [showBanner, setShowBanner] = useState(false);
-  const [motivationalMessage, setMotivationalMessage] = useState<string | null>(null);
-
-  const motivationalMessages = [
-    '🔥 Ты давно не играл! Начни игру!',
-    '⚡️ Твои знания скучают — сыграй раунд!',
-    '🎯 Новые вопросы ждут тебя!',
-    '🧠 Потренируй мозг — начни игру!',
-    '🏆 Чемпион не отдыхает — играй!',
-  ];
-
-  // Determine whether to show the banner
-  useEffect(() => {
-    if (showReminder) {
-      // Pick a random motivational message
-      const idx = Math.floor(Math.random() * motivationalMessages.length);
-      setMotivationalMessage(motivationalMessages[idx]);
-      setShowBanner(true);
-    } else {
-      setShowBanner(false);
-      setMotivationalMessage(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showReminder]);
-
-  // One-time notification permission request after cloud sync
-  useEffect(() => {
-    if (!showReminder) return; // only ask when they haven't played today
-    // Small delay so the UI settles first
-    const timer = setTimeout(() => {
-      showNotifPermissionPopup();
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [showReminder]);
-
-  // Track play date whenever the phase transitions away from a game
-  const phase = useQuizStore((s) => s.phase);
-  useEffect(() => {
-    if (phase === 'result' || phase === 'duel_result' || phase === 'chest') {
-      markPlayedToday();
-      setShowBanner(false);
-    }
-  }, [phase]);
-
-  const handleBannerPlay = useCallback(() => {
-    setPhase('category');
-    markPlayedToday();
-    setShowBanner(false);
-  }, [setPhase]);
-
-  const dismissBanner = useCallback(() => {
-    setShowBanner(false);
-  }, []);
-
-  return { showBanner, motivationalMessage, handleBannerPlay, dismissBanner };
-}
-
-// ---------------------------------------------------------------------------
-// UI: Reminder Banner
-// ---------------------------------------------------------------------------
-
-function ReminderBanner({
-  message,
-  onPlay,
-  onDismiss,
-}: {
-  message: string;
-  onPlay: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-      className="mx-4 mb-3 rounded-xl overflow-hidden"
-      style={{
-        background: 'linear-gradient(135deg, #FF6B35 0%, #FF3D71 100%)',
-        boxShadow: '0 4px 20px rgba(255, 61, 113, 0.35)',
-      }}
-    >
-      <div className="flex items-center justify-between px-4 py-3">
-        <p className="text-white text-sm font-semibold flex-1 mr-2">{message}</p>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={onPlay}
-            className="px-4 py-1.5 bg-white rounded-lg text-sm font-bold"
-            style={{ color: '#FF3D71' }}
-          >
-            Играть
-          </button>
-          <button
-            onClick={onDismiss}
-            className="text-white/70 hover:text-white text-lg leading-none px-1"
-            aria-label="Dismiss reminder"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Theme provider
-// ---------------------------------------------------------------------------
-
-function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { currentTheme } = useQuizStore();
-  const theme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
-  const isLightTheme = currentTheme === 'light_theme';
-
-  // Apply light/dark mode based on selected theme (not auto-detected from platform)
-  useEffect(() => {
-    const root = document.documentElement;
-    if (isLightTheme) {
-      root.classList.remove('dark');
-      root.classList.add('light');
-    } else {
-      root.classList.remove('light');
-      root.classList.add('dark');
-    }
-  }, [isLightTheme]);
-
-  // Apply theme colors
-  useEffect(() => {
-    const root = document.documentElement;
-
-    if (isLightTheme) {
-      // Light mode: use light-appropriate backgrounds with theme accent colors
-      root.style.setProperty('--theme-bg', '#f5f3ff');
-      root.style.setProperty('--theme-card', '#ffffff');
-      root.style.setProperty('--theme-card-hover', '#f0ecff');
-      root.style.setProperty('--theme-accent-from', theme.colors.accentFrom);
-      root.style.setProperty('--theme-accent-to', theme.colors.accentTo);
-    } else {
-      // Dark mode: use theme colors as-is
-      root.style.setProperty('--theme-bg', theme.colors.bg);
-      root.style.setProperty('--theme-card', theme.colors.card);
-      root.style.setProperty('--theme-card-hover', theme.colors.cardHover);
-      root.style.setProperty('--theme-accent-from', theme.colors.accentFrom);
-      root.style.setProperty('--theme-accent-to', theme.colors.accentTo);
-    }
-    if (theme.colors.textAccent) {
-      root.style.setProperty('--theme-text-accent', theme.colors.textAccent);
-    } else {
-      root.style.removeProperty('--theme-text-accent');
-    }
-  }, [currentTheme, theme, isLightTheme]);
-
-  return <>{children}</>;
-}
-
-// ---------------------------------------------------------------------------
-// Main page component
-// ---------------------------------------------------------------------------
-
 export default function Home() {
-  const { phase, hasSeenTutorial, setHasSeenTutorial } = useQuizStore();
+  const s = useQuizStore();
   const { vkInsetTop } = usePlatform();
-  
-  // Show onboarding for first-time users
-  const showOnboarding = !hasSeenTutorial;
-
-  // Detect truly unsupported browsers (very conservative - only ancient browsers)
-  const isUnsupported = typeof window !== 'undefined' && (() => {
-    try {
-      const ua = navigator.userAgent;
-      // Only detect Opera Mini in extreme compression mode (no JS support)
-      const isOperaMini = /Opera Mini\/([\d.]+)/.test(ua) && parseFloat(ua.match(/Opera Mini\/([\d.]+)/)?.[1] || '99') < 7;
-      return isOperaMini;
-    } catch { return false; }
-  })();
-
-  const effectivePhase = isUnsupported ? 'unsupported' : showOnboarding ? 'onboarding' : phase;
-  const Component = phaseComponents[effectivePhase] || HomeScreen;
-
-  useDuelUrlHandler();
-  const { gamesPlayedToday, showReminder } = useCloudSync();
-  useReferralHandler();
-
-  // VK Pull-to-refresh: reload cloud data when user pulls to refresh
+  const [ready, setReady] = useState(false);
+  const [notice, setNotice] = useState("");
+  // Hydration gate: persisted browser state is unavailable during server rendering.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const platform = detectPlatform();
-    if (platform === 'vk') {
-      try {
-        const bridge = (window as any).vkBridge || (window as any).VKBridge;
-        if (bridge && typeof bridge.subscribe === 'function') {
-          const handler = (event: any) => {
-            if (event?.type === 'VKWebAppRefresh') {
-              // Refresh cloud data
-              const store = useQuizStore.getState();
-              if (store.telegramId && store.isCloudLoaded) {
-                store.syncFromCloud();
-              }
-              store.refreshDailyTasks();
-              store.checkDailyReset();
-            }
-          };
-          bridge.subscribe(handler);
-          return () => {
-            try { bridge.unsubscribe(handler); } catch {}
-          };
-        }
-      } catch {}
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReady(true);
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get("duel");
+    if (value) {
+      const data = decodeDuel(value);
+      if (data) {
+        s.setHasSeenTutorial(true);
+        s.joinDuel(data, getQuestionsByIds(data.questions));
+      } else
+        setNotice("Ссылка на дуэль повреждена. Можно начать обычный раунд.");
+      params.delete("duel");
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (params.size ? "?" + params.toString() : ""),
+      );
     }
   }, []);
-
-  const { showBanner, motivationalMessage, handleBannerPlay, dismissBanner } =
-    useNotificationReminder(showReminder);
-
-  // Effect: when phase is home, check and possibly show motivational message
-  // in the console for debugging and set a CSS class for badge styling
   useEffect(() => {
-    if (phase === 'home' && showReminder) {
-      console.log('[KVIZLIK] Reminder: user has not played today');
-    }
-  }, [phase, showReminder]);
-
+    if (!ready) return;
+    const dark = s.currentTheme !== "light_theme";
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.classList.toggle("light", !dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  }, [ready, s.currentTheme]);
+  useEffect(() => {
+    if (ready && s.telegramId && !s.isCloudLoaded && !s.isCloudSyncing)
+      void s.syncFromCloud();
+  }, [ready, s.telegramId, s.isCloudLoaded]);
+  useEffect(() => {
+    if (!s.telegramId) return;
+    const params = new URLSearchParams(window.location.search);
+    const start =
+      params.get("startapp") ||
+      window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+    if (start?.startsWith("ref_"))
+      void s.processReferral(Number(start.slice(4)));
+  }, [s.telegramId]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [s.phase]);
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp as any;
+    if (!tg?.BackButton) return;
+    const back = () => {
+      if (useQuizStore.getState().phase === "game") return;
+      useQuizStore.getState().setPhase("home");
+    };
+    if (s.phase !== "home" && s.phase !== "game") tg.BackButton.show();
+    else tg.BackButton.hide();
+    tg.BackButton.onClick(back);
+    return () => tg.BackButton.offClick(back);
+  }, [s.phase]);
+  if (!ready) return <div className="q-screen q-loading">Квизлик</div>;
+  const phase = !s.hasSeenTutorial ? "onboarding" : s.phase;
+  const Component = screens[phase] || HomeScreen;
+  const nav = !["game", "onboarding", "chest"].includes(phase);
   return (
-    <ThemeProvider>
+    <MotionConfig reducedMotion="user">
       <main
-        className="min-h-[100dvh] bg-[var(--theme-bg)] overflow-hidden"
-        style={vkInsetTop > 0 ? { paddingTop: vkInsetTop } : undefined}
+        className={`q-shell ${nav ? "with-nav" : ""}`}
+        style={{ paddingTop: vkInsetTop || undefined }}
       >
-        {/* Notification reminder banner – only shown on home screen */}
-        <AnimatePresence>
-          {!showOnboarding && phase === 'home' && showBanner && motivationalMessage && (
-            <ReminderBanner
-              message={motivationalMessage}
-              onPlay={handleBannerPlay}
-              onDismiss={dismissBanner}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Subtle badge indicator when user hasn't played today */}
-        {!showOnboarding && phase === 'home' && gamesPlayedToday === 0 && !showBanner && (
-          <div className="flex justify-center mt-2">
-            <span
-              className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium"
-              style={{
-                background: 'rgba(255, 107, 53, 0.15)',
-                color: '#FF6B35',
-              }}
+        {notice && (
+          <div className="q-notice" role="alert">
+            {notice}
+            <button
+              aria-label="Закрыть уведомление"
+              onClick={() => setNotice("")}
             >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
-              </span>
-              Ещё не играл сегодня
-            </span>
+              ×
+            </button>
           </div>
         )}
-
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={effectivePhase}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Component />
-          </motion.div>
-        </AnimatePresence>
+        <Component />
+        {nav && <BottomNav />}
       </main>
-    </ThemeProvider>
+    </MotionConfig>
   );
 }
-
