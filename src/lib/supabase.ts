@@ -1,13 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-const DEFAULT_SUPABASE_URL = "https://jdgpelwdudmvqfidgdyc.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkZ3BlbHdkdWRtdnFmaWRnZHljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5ODk3NjMsImV4cCI6MjA5NTU2NTc2M30.hhfc3qK5nVeMCHzRMY3ngQsoa6dmV_k7ttrRqPxG0wI";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    "Supabase configuration is missing. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+  );
+}
+
 const boundedFetch: typeof fetch = (input, init) =>
   fetch(input, { ...init, signal: init?.signal || AbortSignal.timeout(8000) });
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
